@@ -8,7 +8,12 @@
 # no-progress stopping, and returns structured errors instead of raising. The model cannot change
 # any limit: limits are component inputs, never tool arguments. The lab enforces the same budgets
 # independently (8 actions per run, 24 per run tree, depth 2, 90 s / 180 s deadlines).
-# Version 1.0.0. Source of truth: tasksprint-lab/components/bounded_toolset.py
+# 1.1.0 (Phase 08): the operations role (TS-20 Production Manager) and, for the coordinator, one fixed A2A
+# delegation `assess_release`, which accepts only the TaskSprint A2A Audit adapter's peer tool. The toolset
+# (not the model) builds the typed assess_release payload from contracts/handoff-task.schema.json 1.1, counts
+# the delegation as one action charged to the parent run, allows it once per turn and passes the parent run
+# as the A2A contextId (lineage). The model supplies only the three evidence references.
+# Version 1.1.0. Source of truth: tasksprint-lab/components/bounded_toolset.py
 from __future__ import annotations
 
 import asyncio
@@ -29,7 +34,7 @@ from lfx.custom.custom_component.component import Component
 from lfx.io import DataInput, DropdownInput, FloatInput, HandleInput, IntInput, MessageTextInput, Output, SecretStrInput
 from lfx.schema.json_schema import create_input_schema_from_json_schema
 
-ADAPTER_VERSION = "bounded_toolset/1.0.0"
+ADAPTER_VERSION = "bounded_toolset/1.1.0"
 WORKSPACE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
 RUN_RE = re.compile(r"^run_[0-9a-f]{32}$")
 # Fixed per-role allowlist = the lab's Phase 04 visibility matrix. A tool the lab lists but this
@@ -41,6 +46,9 @@ ALLOWLIST: dict[str, tuple[str, ...]] = {
     "qa": ("get_sprint_state", "read_candidate", "run_candidate_tests", "read_test_report", "read_recent_events"),
     "coordinator": ("get_sprint_state", "record_story", "transition_story", "read_preferences", "save_preference",
                     "read_test_report", "read_recent_events"),
+    "operations": ("get_sprint_state", "list_skills", "load_skill", "read_candidate", "read_test_report",
+                   "get_release_readiness", "create_release_plan", "read_release_plan", "execute_approved_plan",
+                   "get_release_status", "get_app_health", "read_recent_events"),
 }
 # Delegation slots: fixed tool name, the only flow allowed in the slot, and its purpose.
 DELEGATIONS: tuple[tuple[str, str, str, str], ...] = (
@@ -55,6 +63,14 @@ DELEGATIONS: tuple[tuple[str, str, str, str], ...] = (
      "Delegate an independent protected-suite run for one exact candidate ID to the QA specialist (TS-03). "
      "Returns the runner-written test report ID and the failed assertions, if any."),
 )
+# The one A2A delegation (coordinator only): slot, tool name, peer, the adapter tool it accepts, purpose.
+A2A_PEER: tuple[str, str, str, str, str] = (
+    "operations_peer", "assess_release", "TS-20 Production Manager", "ts20_production_manager_a2a",
+    "Ask the independent Production Manager (TS-20, over A2A) to ASSESS a release of one exact tested candidate. "
+    "Give the candidate ID, its sha256 and the passing protected test report ID. Operations fetches its own "
+    "evidence and returns a release plan reference or a blocked assessment. This never deploys and is not an "
+    "approval: a human must review and approve any plan separately. Once per turn.")
+A2A_PAYLOAD_SCHEMA_VERSION = "1.1"
 # Lab errors after which the run can do nothing more in this invocation.
 TERMINAL_LAB_CODES = {"BUDGET_EXHAUSTED", "RUN_EXPIRED", "RUN_NOT_ACTIVE", "RUN_STALE_GENERATION", "RUN_NOT_BOUND",
                       "WORKSPACE_INACTIVE", "UNAUTHENTICATED"}
@@ -69,6 +85,13 @@ def _norm(text: str) -> str:
 class DelegationArgs(BaseModel):
     request: str = Field(..., min_length=1, max_length=4000,
                          description="The bounded task for the specialist: what to do, with the exact IDs it needs.")
+
+
+class AssessArgs(BaseModel):
+    candidate_id: str = Field(..., pattern=r"^cand_[0-9a-f]{24}$", description="Exact candidate ID to assess.")
+    candidate_sha256: str = Field(..., pattern=r"^[a-f0-9]{64}$", description="That candidate's sha256.")
+    app_test_run_id: str = Field(..., pattern=r"^tr_[0-9a-f]{24}$",
+                                 description="The protected test report ID that passed for this exact hash.")
 
 
 class _Ledger:
@@ -134,6 +157,10 @@ class TaskSprintBoundedToolset(Component):
                     required=False, info="Coordinator only: the Toolset of a Run Flow set to TS-02 Developer."),
         HandleInput(name="qa_flow", display_name="Run Flow: TS-03 QA", input_types=["Tool"], required=False,
                     info="Coordinator only: the Toolset of a Run Flow set to TS-03 QA."),
+        HandleInput(name="operations_peer", display_name="A2A peer: TS-20 Production Manager", input_types=["Tool"],
+                    required=False, info="Coordinator only: the Toolset of the TaskSprint A2A Audit adapter bound to "
+                    "the TS-20 Production Manager card."),
+        FloatInput(name="a2a_timeout_s", display_name="A2A assessment timeout (s)", value=90.0, advanced=True),
     ]
     outputs = [Output(display_name="Toolset", name="component_as_tool", method="to_toolkit", types=["Tool"],
                       cache=False)]
@@ -338,6 +365,104 @@ class TaskSprintBoundedToolset(Component):
                                          "parent_run_id": ledger.run["run_id"], "elapsed_s": round(time.time() - started, 1)},
                           "specialist_response": text[:6000]}, ledger)
 
+    # ------------------------------------------------------------------ the one A2A delegation
+    async def _assess(self, ledger: _Ledger, conf: tuple, inner, args: dict) -> str:
+        base, workspace, token = conf
+        tool_name = A2A_PEER[1]
+        key = tool_name + ":" + hashlib.sha256(json.dumps(args, sort_keys=True).encode()).hexdigest()[:16]
+        refusal = self._gate(ledger, tool_name, key)
+        if refusal:
+            return refusal
+        depth = int(ledger.run.get("depth") or 0)
+        if depth + 1 > max(0, min(2, int(self.max_depth))):
+            return self._refuse(ledger, tool_name, "DELEGATION_DEPTH_EXCEEDED",
+                                f"delegation depth would exceed {self.max_depth}", terminal=False)
+        if ledger.delegations.get(tool_name, 0) >= 1:
+            return self._refuse(ledger, tool_name, "DELEGATION_LIMIT", "assess_release was already used this turn; "
+                                "report its result or escalate to the human", terminal=False)
+        ledger.actions += 1
+        try:
+            async with httpx.AsyncClient(timeout=min(15.0, max(0.5, ledger.remaining())),
+                                         follow_redirects=False) as client:
+                r = await client.get(base + "/v1/state", headers=self._headers(token, workspace, ledger.run["run_id"]))
+        except httpx.HTTPError as exc:
+            return self._out({"error": {"code": "LAB_UNREACHABLE", "source": "harness",
+                                        "message": f"could not charge the delegation ({type(exc).__name__}); "
+                                                   "not delegated"}}, ledger)
+        if r.status_code != 200:
+            try:
+                err = r.json().get("error") or {}
+            except ValueError:
+                err = {}
+            code = err.get("code", f"HTTP_{r.status_code}")
+            if code in TERMINAL_LAB_CODES:
+                ledger.stop(code, err.get("message", ""))
+            ledger.trace.append({"tool": tool_name, "outcome": "refused_by_lab", "code": code})
+            return self._out({"error": {"code": code, "message": err.get("message", ""), "source": "lab",
+                                        "request_id": err.get("request_id")}}, ledger)
+        ledger.delegations[tool_name] = 1
+        timeout = max(5.0, min(float(self.a2a_timeout_s or 90), ledger.remaining()))
+        from datetime import datetime, timedelta, timezone
+        deadline = datetime.now(timezone.utc) + timedelta(seconds=timeout)
+        payload = {"schema_version": A2A_PAYLOAD_SCHEMA_VERSION, "intent": "assess_release", "workspace_id": workspace,
+                   "candidate_id": args["candidate_id"], "candidate_sha256": args["candidate_sha256"],
+                   "app_test_run_id": args["app_test_run_id"], "agent_manifest_id": None,
+                   "deadline_utc": deadline.isoformat(timespec="seconds").replace("+00:00", "Z"),
+                   "allow_execute": False}
+        started = time.time()
+        try:
+            with anyio.fail_after(timeout + 10):
+                out = await inner.ainvoke({"payload_json": json.dumps(payload, sort_keys=True),
+                                           "parent_run_id": ledger.run["run_id"]})
+        except TimeoutError:
+            ledger.stop("DELEGATION_TIMEOUT", f"{tool_name} did not finish within {timeout:.0f} s")
+            ledger.trace.append({"tool": tool_name, "outcome": "timeout"})
+            return self._out({"error": {"code": "DELEGATION_TIMEOUT", "source": "harness", "message":
+                                        f"{tool_name} was cancelled after {timeout:.0f} s. Nothing was released; "
+                                        "escalate to the human."}}, ledger)
+        except Exception as exc:  # noqa: BLE001
+            ledger.trace.append({"tool": tool_name, "outcome": "error"})
+            return self._out({"error": {"code": "DELEGATION_FAILED", "source": "harness",
+                                        "message": f"{tool_name} failed ({type(exc).__name__}: {str(exc)[:300]})"}},
+                             ledger)
+        text = out if isinstance(out, str) else json.dumps(out, default=str)
+        try:
+            result = json.loads(text)
+        except ValueError:
+            result = {"raw": text[:2000]}
+        ledger.trace.append({"tool": tool_name, "outcome": (result or {}).get("outcome", "unknown"),
+                             "elapsed_s": round(time.time() - started, 1)})
+        return self._out({"delegation": {"tool": tool_name, "peer": A2A_PEER[2], "transport": "A2A",
+                                         "parent_run_id": ledger.run["run_id"], "payload": payload,
+                                         "elapsed_s": round(time.time() - started, 1)},
+                          "peer_result": result}, ledger)
+
+    def _peer_tools(self, ledger: _Ledger, conf: tuple) -> list:
+        slot, tool_name, peer, inner_name, purpose = A2A_PEER
+        value = getattr(self, slot, None)
+        inner_list = value if isinstance(value, list) else ([value] if value else [])
+        if self.expected_role != "coordinator":
+            if inner_list:
+                raise ValueError("only the coordinator toolset may carry the A2A peer")
+            return []
+        if not inner_list:
+            return []  # Phase 07 flows without the peer keep working
+        if len(inner_list) != 1:
+            raise ValueError(f"connect exactly one TaskSprint A2A Audit adapter ({peer}) to '{slot}'")
+        inner = inner_list[0]
+        meta = getattr(inner, "metadata", None) or {}
+        if getattr(inner, "name", "") != inner_name or not str(meta.get("source", "")).startswith("a2a_audit/"):
+            raise ValueError(f"'{slot}' accepts only the TaskSprint A2A Audit adapter tool for {peer}")
+
+        async def run(candidate_id: str, candidate_sha256: str, app_test_run_id: str) -> str:
+            return await self._assess(ledger, conf, inner, {"candidate_id": candidate_id,
+                                                            "candidate_sha256": candidate_sha256,
+                                                            "app_test_run_id": app_test_run_id})
+        return [StructuredTool(name=tool_name, description=purpose, args_schema=AssessArgs, coroutine=run,
+                               func=self._sync(run), tags=[tool_name],
+                               metadata={"source": ADAPTER_VERSION, "peer": peer,
+                                         "peer_flow_id": meta.get("peer_flow_id")})]
+
     @staticmethod
     def _inner_field(inner) -> str:
         schema = inner.args_schema
@@ -419,6 +544,7 @@ class TaskSprintBoundedToolset(Component):
                                         coroutine=run_tool, func=self._sync(run_tool), tags=[t.name],
                                         metadata={"source": ADAPTER_VERSION, "read_only": read_only}))
         tools += self._delegation_tools(ledger, conf)
+        tools += self._peer_tools(ledger, conf)
         self.status = {"adapter": ADAPTER_VERSION, "role": self.expected_role, "run_id": run["run_id"],
                        "tools": [t.name for t in tools], "max_actions": max_actions,
                        "deadline_s": round(ledger.remaining(), 1)}

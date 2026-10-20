@@ -16,7 +16,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "const": "1.1"
     },
     "intent": {
       "const": "assess_release"
@@ -41,16 +41,22 @@
       "maxLength": 128
     },
     "agent_manifest_id": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "minLength": 1,
-      "maxLength": 128
+      "maxLength": 128,
+      "description": "The approved agent-system manifest the requester relies on, or null when the requester holds none (Phase 08: none exists until agent evaluations, Phase 10). Operations resolves and verifies the manifest itself; null never satisfies the deployment gate."
     },
     "deadline_utc": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "description": "Absolute UTC deadline for the bounded assessment; Operations must not continue past it."
     },
     "allow_execute": {
-      "const": false
+      "const": false,
+      "description": "Always false: an assessment never executes a release."
     }
   }
 }

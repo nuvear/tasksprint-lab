@@ -20,7 +20,8 @@ docs/
 langflow/
 scripts/
 prompts/
-contracts/
+contracts/*
+!contracts/handoff-task.schema.json
 reports/
 runtime/
 exports/

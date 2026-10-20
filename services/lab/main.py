@@ -27,11 +27,12 @@ from . import SERVICE_VERSION, app_commands, audit, instructor, runs
 from .auth import PUBLIC_ROUTES, Authenticator, Identity, allowed_roles
 from .config import Settings, load_settings, valid_workspace_id
 from .mcp import MCP_PATH, McpEndpoint
-from .operations import Ctx, LabOps
+from .operations import Ctx, LabOps, RunCheckedStore
 from .retrieval import KnowledgeBase
 from .runner_client import RunnerClient, build_runner
-from .schemas import (AppCommand, CandidateSubmit, InstructorAction, InstructorKnowledgeSearch, KnowledgeSearch,
-                      MemorySave, RunCreate, StoryCreate, TestRunCreate, TransitionRequest)
+from .schemas import (A2AExchangeCreate, AppCommand, CandidateSubmit, InstructorAction, InstructorKnowledgeSearch,
+                      KnowledgeSearch, MemorySave, ReadinessQuery, ReleasePlanCreate, RunCreate, StoryCreate,
+                      TestRunCreate, TransitionRequest)
 from .skills import SkillCatalog
 from .store import LabError, Store, require_active_workspace
 
@@ -265,6 +266,27 @@ def create_app(settings: Settings | None = None, runner: RunnerClient | None = N
     def read_test_run(test_run_id: str, c: Ctx = Depends(ctx)) -> dict:
         return ops.read_test_run(c, test_run_id)
 
+    @app.get("/v1/readiness")
+    def get_readiness(c: Ctx = Depends(ctx), candidate_id: str | None = Query(None, max_length=29)) -> dict:
+        q = ReadinessQuery(candidate_id=candidate_id)
+        return ops.readiness(c, q.candidate_id)
+
+    @app.post("/v1/release-plans", status_code=201)
+    def create_release_plan(body: ReleasePlanCreate, c: Ctx = Depends(ctx)) -> dict:
+        return ops.create_release_plan(c, body)
+
+    @app.get("/v1/release-plans/{plan_id}")
+    def read_release_plan(plan_id: str, c: Ctx = Depends(ctx)) -> dict:
+        return ops.read_release_plan(c, plan_id)
+
+    @app.post("/v1/a2a-exchanges", status_code=201)
+    def record_a2a_exchange(body: A2AExchangeCreate, c: Ctx = Depends(ctx)) -> dict:
+        return ops.record_a2a_exchange(c, body)
+
+    @app.get("/v1/a2a-exchanges/{exchange_id}")
+    def read_a2a_exchange(exchange_id: str, c: Ctx = Depends(ctx)) -> dict:
+        return ops.read_a2a_exchange(c, exchange_id)
+
     @app.post("/v1/knowledge/search")
     def knowledge_search(body: KnowledgeSearch, c: Ctx = Depends(ctx)) -> dict:
         return ops.knowledge_search(c, body)
@@ -296,7 +318,7 @@ def create_app(settings: Settings | None = None, runner: RunnerClient | None = N
 
         if cmd.verb == "complete":
             return ops.audited(c, "app.complete", lambda: app_commands.complete_task(
-                store, runner, c.workspace_id, cmd.arg or "", record=record))
+                RunCheckedStore(store, lambda conn: ops.recheck_run(conn, c)), runner, c.workspace_id, cmd.arg or "", record=record))
 
         def op(conn: sqlite3.Connection) -> dict:
             result = app_commands.execute(conn, c.workspace_id, cmd)

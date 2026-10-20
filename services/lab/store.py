@@ -278,10 +278,29 @@ MIGRATION_0002 = """
 CREATE VIRTUAL TABLE chunks_fts USING fts5(section, chunk_text, tokenize = 'porter unicode61');
 """
 
+# Phase 08: append-only audited A2A exchange records (Architecture A10).
+MIGRATION_0003 = """
+CREATE TABLE a2a_exchanges (
+    exchange_id      TEXT PRIMARY KEY,
+    workspace_id     TEXT NOT NULL REFERENCES workspaces(workspace_id),
+    parent_run_id    TEXT NOT NULL REFERENCES runs(run_id),
+    peer_flow_id     TEXT NOT NULL,
+    protocol_version TEXT,
+    outcome          TEXT NOT NULL,
+    task_id          TEXT,
+    context_id       TEXT,
+    exchange_json    TEXT NOT NULL,
+    exchange_sha256  TEXT NOT NULL CHECK (length(exchange_sha256) = 64),
+    created_at       TEXT NOT NULL
+);
+CREATE INDEX a2a_exchanges_by_run ON a2a_exchanges(parent_run_id);
+""" + _immutable("a2a_exchanges")
+
 # (version, name, sql). Never edit an applied migration: add a new version.
 MIGRATIONS: list[tuple[int, str, str]] = [
     (1, "initial lab schema (Phase 02)", MIGRATION_0001),
     (2, "FTS5 knowledge chunk index (Phase 04)", MIGRATION_0002),
+    (3, "append-only A2A exchange records (Phase 08)", MIGRATION_0003),
 ]
 
 

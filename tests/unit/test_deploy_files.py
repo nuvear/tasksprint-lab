@@ -157,7 +157,7 @@ def test_runner_image_contains_only_the_runner():
 def test_lab_image_contains_lab_corpus_skills_and_fixtures_only():
     sources = [s for srcs, _ in copies("Dockerfile.lab") for s in srcs]
     assert sources == ["pyproject.toml", "uv.lock", ".python-version", "services/__init__.py", "services/lab/",
-                       "knowledge/", "skills/", "instructor/fixtures/"]
+                       "knowledge/", "skills/", "instructor/fixtures/", "contracts/handoff-task.schema.json"]
     text = (REPO / "Dockerfile.lab").read_text()
     assert "TASKSPRINT_DB_PATH=/data/tasksprint.sqlite3" in text and "RAILWAY_RUN_UID=0" in text
 
@@ -176,8 +176,9 @@ def test_dockerignore_excludes_secrets_data_and_non_runtime_material():
     assert "instructor/*" in pats and (True, "instructor/fixtures") in dockerignore_patterns()
     for path in (".local/lab.env", ".local/role_tokens.env", ".local/railway/role_tokens.env", "tests/conftest.py",
                  "docs/BUILD_GUIDE.md", "langflow/COMPONENT_MAP.md", ".git/HEAD", "x/tasksprint.sqlite3",
-                 "instructor/notes.md", ".env", "scripts/local_init.py", "services/lab/__pycache__/main.cpython-312.pyc"):
+                 "instructor/notes.md", "contracts/README.md", ".env", "scripts/local_init.py", "services/lab/__pycache__/main.cpython-312.pyc"):
         assert ignored(path), path
     for path in ("services/lab/main.py", "services/runner/main.py", "knowledge/01_product_brief.md",
-                 "skills/implement-todo-change/SKILL.md", "instructor/fixtures/starter_v0.py", "uv.lock"):
+                 "skills/implement-todo-change/SKILL.md", "instructor/fixtures/starter_v0.py", "uv.lock",
+                 "contracts/handoff-task.schema.json"):
         assert not ignored(path), path

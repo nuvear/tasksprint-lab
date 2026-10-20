@@ -61,6 +61,27 @@ def _require_live(conn: sqlite3.Connection, run: sqlite3.Row, workspace: sqlite3
         raise LabError(409, "RUN_EXPIRED", "run deadline has passed")
 
 
+def require_live_at_commit(conn: sqlite3.Connection, *, run_id: str, role: str, workspace_id: str) -> None:
+    """Re-check the run inside the write transaction, immediately before a mutation commits (A9).
+
+    ``consume_action`` admits an action when it starts; a long operation (a protected test run,
+    a slow model turn) can outlive the run's deadline, or the run can be stopped/cancelled or the
+    workspace reset meanwhile. Calling this inside the same ``BEGIN IMMEDIATE`` transaction as
+    the write makes such a late result fail instead of committing. Spends no budget.
+    """
+    ws = conn.execute("SELECT * FROM workspaces WHERE workspace_id = ?", (workspace_id,)).fetchone()
+    if ws is None or not ws["active"]:
+        raise LabError(404, "WORKSPACE_NOT_FOUND", "workspace does not exist or is inactive")
+    run = conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+    if run is None or run["workspace_id"] != workspace_id or run["role"] != role:
+        raise LabError(403, "RUN_NOT_BOUND", "run is not bound to this credential and workspace")
+    try:
+        _require_live(conn, run, ws)
+    except LabError as err:
+        raise LabError(err.status, err.code, err.message + " (re-checked at commit; nothing was written)",
+                       {"audit": {"checked": "at_commit"}}) from None
+
+
 def consume_action(conn: sqlite3.Connection, *, run_id: str, role: str, workspace: sqlite3.Row) -> sqlite3.Row:
     """Validate a run for this caller and count one tool action against its budgets."""
     run = conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()

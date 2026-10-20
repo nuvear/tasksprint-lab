@@ -9,7 +9,11 @@
 # parent exists in this workspace and is live, adds one to the depth (max 2), shares the parent
 # tree's 24-action budget and caps the deadline at the parent's. A forged session id cannot add
 # budget: it can only join an existing live tree.
-# Version 1.1.0. Source of truth: tasksprint-lab/components/run_context.py
+# 1.2.0 (Phase 08): the same lineage over A2A. Langflow's A2A server runs the flow with session id
+# "<per-caller namespace uuid>:<A2A contextId>", and the Sprint Room's A2A adapter sends the delegating
+# coordinator run id as the contextId; a session of exactly that shape also creates a child run. Only an
+# authenticated A2A caller (owner API key) can choose a contextId, and it can only join a live tree.
+# Version 1.2.0. Source of truth: tasksprint-lab/components/run_context.py
 from __future__ import annotations
 
 import re
@@ -22,10 +26,11 @@ from lfx.io import MessageInput, MessageTextInput, Output, SecretStrInput
 from lfx.schema.data import Data
 from lfx.schema.message import Message
 
-ADAPTER_VERSION = "run_context/1.1.0"
+ADAPTER_VERSION = "run_context/1.2.0"
 RUNS_PATH = "/v1/runs"
 WORKSPACE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
 RUN_RE = re.compile(r"^run_[0-9a-f]{32}$")
+A2A_SESSION_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:(run_[0-9a-f]{32})$")
 CONV_SAFE = re.compile(r"[^A-Za-z0-9_.:-]")
 RUN_FIELDS = ("run_id", "role", "session_namespace", "parent_run_id", "root_run_id", "depth", "max_actions",
               "tree_max_actions", "deadline_at")
@@ -72,8 +77,12 @@ class TaskSprintRunContext(Component):
         session = str(getattr(self.graph, "session_id", "") or getattr(self.graph, "flow_id", "") or "default")
         conversation = ("lf-" + CONV_SAFE.sub("-", session))[:64]
         body_in: dict = {"conversation_id": conversation}
+        a2a = A2A_SESSION_RE.match(session)
         if RUN_RE.match(session):
             body_in["parent_run_id"] = session
+        elif a2a:
+            body_in["parent_run_id"] = a2a.group(1)
+            body_in["conversation_id"] = ("lf-a2a-" + a2a.group(1))[:64]
         resp = httpx.post(base + RUNS_PATH, json=body_in, timeout=20.0,
                           headers={"Authorization": f"Bearer {token}", "X-TaskSprint-Workspace": workspace,
                                    "User-Agent": ADAPTER_VERSION}, follow_redirects=False)

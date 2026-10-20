@@ -5,7 +5,7 @@ budgets: authority comes from the token and server configuration only.
 """
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -75,3 +75,38 @@ class InstructorKnowledgeSearch(Strict):
     """Instructor-only: may include archived documents to demonstrate the metadata filter."""
     query: Annotated[str, Field(min_length=1, max_length=300)]
     include_archived: bool = True
+
+
+CandidateId = Annotated[str, Field(pattern=r"^cand_[0-9a-f]{24}$")]
+TestRunId = Annotated[str, Field(pattern=r"^tr_[0-9a-f]{24}$")]
+
+
+class ReadinessQuery(Strict):
+    candidate_id: CandidateId | None = None
+
+
+class ReleasePlanCreate(Strict):
+    """Operations asks for a plan; the server binds environment, hashes, revision and evidence."""
+    action: Literal["deploy", "rollback"]
+    candidate_id: CandidateId
+    app_test_run_id: TestRunId | None = None
+
+
+class A2AExchangeCreate(Strict):
+    """Written only by the trusted Sprint Room A2A adapter (coordinator credential); no MCP tool."""
+    parent_run_id: Annotated[str, Field(pattern=r"^run_[0-9a-f]{32}$")]
+    peer_flow_id: Annotated[str, Field(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")]
+    card_url: Annotated[str, Field(max_length=300, pattern=r"^https://[A-Za-z0-9.\-]+(:\d{1,5})?/api/v1/a2a/"
+                                   r"[0-9a-f-]{36}/\.well-known/agent-card\.json$")]
+    protocol_version: Annotated[str, Field(pattern=r"^[0-9]{1,3}\.[0-9]{1,3}(\.[0-9]{1,3})?$")] | None = None
+    transport: Annotated[str, Field(max_length=32)] | None = None
+    adapter_version: Annotated[str, Field(min_length=1, max_length=64)]
+    request: dict[str, Any]
+    outcome: Literal["completed", "failed", "rejected", "unreachable", "unauthorized", "timeout", "protocol_error",
+                     "not_sent"]
+    task: dict[str, Any] | None = None
+    task_get: dict[str, Any] | None = None
+    http: Annotated[list[dict[str, Any]], Field(max_length=12)] = []
+    error: dict[str, Any] | None = None
+    started_at: Annotated[str, Field(max_length=40)]
+    finished_at: Annotated[str, Field(max_length=40)]

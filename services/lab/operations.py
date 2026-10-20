@@ -8,18 +8,19 @@ in the modules they call, so a tool call cannot skip a check a REST call gets.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import sqlite3
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
-from . import audit, candidates, memory, releases, retrieval, runs, state, testing
+from . import a2a_exchanges, audit, candidates, memory, release_plans, releases, retrieval, runs, state, testing
 from .auth import Identity
 from .config import Settings
 from .retrieval import KnowledgeBase
 from .runner_client import RunnerClient
-from .schemas import (CandidateSubmit, InstructorKnowledgeSearch, KnowledgeSearch, MemorySave, StoryCreate,
-                      TestRunCreate, TransitionRequest)
+from .schemas import (A2AExchangeCreate, CandidateSubmit, InstructorKnowledgeSearch, KnowledgeSearch, MemorySave,
+                      ReleasePlanCreate, StoryCreate, TestRunCreate, TransitionRequest)
 from .skills import NAME_RE, VERSION_RE, SkillCatalog
 from .store import LabError, Store, require_active_workspace
 
@@ -81,9 +82,15 @@ class LabOps:
                 self.denial_event(c.request_id, c.identity, action, c.workspace_id, c.run_id, err)
             raise
 
+    def recheck_run(self, conn: sqlite3.Connection, c: Ctx) -> None:
+        """Inside the write transaction: the run must still be live when the mutation commits (A9)."""
+        if c.run_id:
+            runs.require_live_at_commit(conn, run_id=c.run_id, role=c.identity.role, workspace_id=c.workspace_id)
+
     def write_op(self, c: Ctx, action: str, fn: Callable[[sqlite3.Connection], Any]) -> Any:
         def run() -> Any:
             with self.store.write() as conn:
+                self.recheck_run(conn, c)
                 return fn(conn)
         return self.audited(c, action, run)
 
@@ -148,8 +155,10 @@ class LabOps:
         return self.write_op(c, "candidate.submit", op)
 
     def create_test_run(self, c: Ctx, body: TestRunCreate) -> dict:
+        # The protected suite module is not edited (its own bytes are the suite hash); its single write
+        # transaction is wrapped so the run is re-checked inside it, after the (long) runner evaluation.
         return self.audited(c, "test_run.create", lambda: testing.run_protected_suite(
-            self.store, self.runner, workspace_id=c.workspace_id, candidate_id=body.candidate_id,
+            RunCheckedStore(self.store, lambda conn: self.recheck_run(conn, c)), self.runner, workspace_id=c.workspace_id, candidate_id=body.candidate_id,
             request_id=c.request_id, actor_role=c.identity.role, run_id=c.run_id))
 
     def read_test_run(self, c: Ctx, test_run_id: str) -> dict:
@@ -170,6 +179,43 @@ class LabOps:
     def events(self, c: Ctx, limit: int) -> dict:
         with self.store.read() as conn:
             return {"events": audit.list_events(conn, c.workspace_id, limit)}
+
+    # ---------------------------------------------------------------- readiness and plans (Phase 08)
+    def readiness(self, c: Ctx, candidate_id: str | None) -> dict:
+        with self.store.read() as conn:
+            result = release_plans.compute_readiness(conn, c.workspace_id, candidate_id)
+        with self.store.write() as conn:
+            result["readiness_event_id"] = audit.record_event(
+                conn, request_id=c.request_id, actor_role=c.identity.role, action="release.readiness",
+                outcome=result["deploy"]["status"].lower(), workspace_id=c.workspace_id, run_id=c.run_id,
+                details={"candidate_id": (result["candidate"] or {}).get("candidate_id"),
+                         "gates": {g["gate"]: g["status"] for g in result["gates"]},
+                         "release_revision": result["release"]["release_revision"],
+                         "rollback_available": result["rollback"]["available"]})
+        return result
+
+    def create_release_plan(self, c: Ctx, body: ReleasePlanCreate) -> dict:
+        return self.write_op(c, "release_plan.create", lambda conn: release_plans.create_plan(
+            conn, workspace_id=c.workspace_id, operation=body.action, candidate_id=body.candidate_id,
+            app_test_run_id=body.app_test_run_id, request_id=c.request_id, actor_role=c.identity.role,
+            run_id=c.run_id))
+
+    def read_release_plan(self, c: Ctx, plan_id: str) -> dict:
+        if not (plan_id.startswith("plan_") and len(plan_id) == 29):
+            raise LabError(404, "PLAN_NOT_FOUND", "release plan does not exist in this workspace")
+        with self.store.read() as conn:
+            return release_plans.plan_view(conn, plan_id, c.workspace_id)
+
+    # ---------------------------------------------------------------- audited A2A exchanges (Phase 08)
+    def record_a2a_exchange(self, c: Ctx, body: A2AExchangeCreate) -> dict:
+        return self.write_op(c, "a2a.exchange", lambda conn: a2a_exchanges.record_exchange(
+            conn, workspace_id=c.workspace_id, actor_role=c.identity.role, request_id=c.request_id, body=body))
+
+    def read_a2a_exchange(self, c: Ctx, exchange_id: str) -> dict:
+        if not (exchange_id.startswith("a2ax_") and len(exchange_id) == 29):
+            raise LabError(404, "EXCHANGE_NOT_FOUND", "A2A exchange record does not exist in this workspace")
+        with self.store.read() as conn:
+            return a2a_exchanges.read_exchange(conn, c.workspace_id, exchange_id)
 
     # ---------------------------------------------------------------- knowledge (A7)
     def knowledge_search(self, c: Ctx, body: KnowledgeSearch) -> dict:
@@ -212,3 +258,20 @@ class LabOps:
                 details={"name": skill.name, "version": skill.version, "body_sha256": skill.body_sha256})
         return {**skill.summary(), "body": skill.body, "package_sha256": skill.package_sha256,
                 "event_id": event_id, "grants_permissions": False}
+
+
+class RunCheckedStore:
+    """Store view whose write transactions first re-check the caller's run (used around trusted code)."""
+
+    def __init__(self, store: Store, check: Callable[[sqlite3.Connection], None]):
+        self._store = store
+        self._check = check
+
+    def read(self):
+        return self._store.read()
+
+    @contextlib.contextmanager
+    def write(self) -> Iterator[sqlite3.Connection]:
+        with self._store.write() as conn:
+            self._check(conn)
+            yield conn

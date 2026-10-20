@@ -21,6 +21,8 @@ COPY services/lab/ services/lab/
 COPY knowledge/ knowledge/
 COPY skills/ skills/
 COPY instructor/fixtures/ instructor/fixtures/
+# Phase 08: the application contract the lab validates A2A assessment payloads against.
+COPY contracts/handoff-task.schema.json contracts/handoff-task.schema.json
 RUN groupadd --system --gid 10002 lab \
     && useradd --system --uid 10002 --gid 10002 --no-create-home --shell /usr/sbin/nologin lab \
     && mkdir -p /data && chown 10002:10002 /data && chmod 0700 /data

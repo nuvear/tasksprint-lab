@@ -29,8 +29,8 @@ reason. Tools run the trusted lab functions in-process (``operations.LabOps``);
 one tool call is one action, not one per internal step.
 
 Errors are tool results with ``isError: true`` and a structured
-``{"error": {code, message, request_id}}``. Tools whose backend arrives in
-Phase 08-09 answer ``NOT_IMPLEMENTED``; nothing is stubbed as success.
+``{"error": {code, message, request_id}}``. The tool whose backend arrives in
+Phase 09 (``execute_approved_plan``) answers ``NOT_IMPLEMENTED``; nothing is stubbed as success.
 Tool schemas take no credentials, URLs, SQL, paths, code or environment names.
 """
 from __future__ import annotations
@@ -44,7 +44,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Annotated, Any, AsyncIterator, Callable, Literal
+from typing import Annotated, Any, AsyncIterator, Callable
 
 import anyio
 import anyio.to_thread
@@ -62,8 +62,8 @@ from . import SERVICE_VERSION, audit, runs
 from .auth import AGENT_RUNTIME_ROLES, Authenticator, Identity, allowed_roles
 from .config import Settings, valid_workspace_id
 from .operations import Ctx, LabOps
-from .schemas import (CandidateSubmit, KnowledgeSearch, MemorySave, StoryCreate, Strict, TestRunCreate,
-                      TransitionRequest)
+from .schemas import (CandidateSubmit, KnowledgeSearch, MemorySave, ReadinessQuery, ReleasePlanCreate, StoryCreate,
+                      Strict, TestRunCreate, TransitionRequest)
 from .store import LabError, require_active_workspace
 
 log = logging.getLogger("tasksprint.lab.mcp")
@@ -100,11 +100,6 @@ class TestRunRef(Strict):
 
 class EventsArgs(Strict):
     limit: Annotated[int, Field(strict=True, ge=1, le=50)] = 20
-
-
-class ReleasePlanCreate(Strict):
-    action: Literal["deploy", "rollback"]
-    candidate_id: Annotated[str, Field(pattern=r"^cand_[0-9a-f]{24}$")]
 
 
 class PlanRef(Strict):
@@ -173,12 +168,19 @@ CATALOG: tuple[ToolSpec, ...] = (
              lambda o, c, a: o.create_test_run(c, a), False),
     ToolSpec("read_test_report", "Read one immutable protected test report by ID.", TestRunRef,
              ("GET", "/v1/test-runs/{test_run_id}"), lambda o, c, a: o.read_test_run(c, a.test_run_id), True),
-    ToolSpec("get_release_readiness", "Compute release readiness from recorded evidence." + _NI.format(phase="Phase 08"),
-             NoArgs, None, None, True, frozenset({"operations"}), "Phase 08"),
-    ToolSpec("create_release_plan", "Create a canonical immutable release or rollback plan." + _NI.format(phase="Phase 08"),
-             ReleasePlanCreate, None, None, False, frozenset({"operations"}), "Phase 08"),
-    ToolSpec("read_release_plan", "Read one canonical release plan." + _NI.format(phase="Phase 08"),
-             PlanRef, None, None, True, frozenset({"operations"}), "Phase 08"),
+    ToolSpec("get_release_readiness", "Compute release readiness from recorded evidence only: candidate integrity, "
+             "a passing protected test report for the exact hash, the agent-system manifest, app health and the "
+             "current release revision. Optional candidate_id; default is the newest tested candidate. Returns the "
+             "gates, deploy READY/BLOCKED, rollback availability and a readiness_event_id. Not an approval.",
+             ReadinessQuery, ("GET", "/v1/readiness"), lambda o, c, a: o.readiness(c, a.candidate_id), True),
+    ToolSpec("create_release_plan", "Create (or return the identical live) canonical immutable deploy or rollback "
+             "plan. The server binds environment demo-production, target and current hashes, expected release "
+             "revision, evidence IDs, a 15-minute expiry and plan_sha256, and sets AWAITING_APPROVAL. Refused with "
+             "RELEASE_NOT_READY and the blocking gates when evidence is missing. A plan is not an approval.",
+             ReleasePlanCreate, ("POST", "/v1/release-plans"), lambda o, c, a: o.create_release_plan(c, a), False),
+    ToolSpec("read_release_plan", "Read one canonical release plan, its state and the exact human-review preview "
+             "(no mutation).", PlanRef, ("GET", "/v1/release-plans/{plan_id}"),
+             lambda o, c, a: o.read_release_plan(c, a.plan_id), True),
     ToolSpec("execute_approved_plan", "Execute an exact plan that a human has approved; the backend verifies and "
              "consumes the approval." + _NI.format(phase="Phase 09"),
              PlanRef, None, None, False, frozenset({"operations"}), "Phase 09"),

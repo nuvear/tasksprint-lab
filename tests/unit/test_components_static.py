@@ -33,7 +33,7 @@ def _constant(tree: ast.Module, name: str):
 def test_allowlist_equals_the_lab_visibility_matrix():
     allow = _constant(_module(TOOLSET), "ALLOWLIST")
     matrix = visibility_matrix()
-    assert set(allow) == {"product_owner", "developer", "qa", "coordinator"}
+    assert set(allow) == {"product_owner", "developer", "qa", "coordinator", "operations"}
     for role, tools in allow.items():
         assert list(tools) == matrix[role], role
 
@@ -46,7 +46,31 @@ def test_delegations_point_only_at_the_three_specialists():
         ("qa_flow", "ask_qa", "TS-03 QA"),
     ]
     text = TOOLSET.read_text(encoding="utf-8")
-    assert "TS-90" not in text and "TS-20" not in text
+    assert "TS-90" not in text
+    peer = _constant(_module(TOOLSET), "A2A_PEER")
+    assert peer[:4] == ("operations_peer", "assess_release", "TS-20 Production Manager", "ts20_production_manager_a2a")
+    assert _constant(_module(TOOLSET), "A2A_PAYLOAD_SCHEMA_VERSION") == "1.1"
+
+
+def test_a2a_payload_built_by_the_toolset_matches_the_contract():
+    """The toolset's payload keys are exactly the contract's; allow_execute is the constant False."""
+    import json as _json
+    contract = _json.loads((REPO_ROOT / "contracts/handoff-task.schema.json").read_text())
+    text = TOOLSET.read_text(encoding="utf-8")
+    start = text.index("payload = {\"schema_version\"")
+    block = text[start:text.index("started = time.time()", start)]
+    keys = set(re.findall(r'"([a-z_0-9]+)":', block))
+    assert keys == set(contract["required"]) == set(contract["properties"])
+    assert '"allow_execute": False' in block and '"agent_manifest_id": None' in block
+
+
+def test_a2a_adapter_calls_one_fixed_peer_and_records_the_exchange():
+    text = (COMPONENTS / "a2a_audit.py").read_text(encoding="utf-8")
+    assert 'PEER_TOOL_NAME = "ts20_production_manager_a2a"' in text
+    assert "from a2a.client.client_factory import create_client" in text  # genuine SDK client, no stub server
+    assert "pb.GetTaskRequest" in text and "/v1/a2a-exchanges" in text
+    assert "follow_redirects=False" in text and "refusing a request outside the fixed peer origin" in text
+    assert "context_id=parent_run_id" in text
 
 
 def test_default_limits_match_the_a9_budgets():
@@ -84,4 +108,6 @@ def test_run_context_creates_child_runs_only_for_server_issued_ids():
     text = (COMPONENTS / "run_context.py").read_text(encoding="utf-8")
     assert 'RUN_RE = re.compile(r"^run_[0-9a-f]{32}$")' in text
     assert 'body_in["parent_run_id"] = session' in text
+    assert 'A2A_SESSION_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:(run_[0-9a-f]{32})$")' \
+        in text
     assert text.count("group_outputs=True") == 3
