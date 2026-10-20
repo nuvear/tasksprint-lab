@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TaskSprint canonical release plan (server-generated; not approval)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "plan_id",
+    "workspace_id",
+    "operation",
+    "environment",
+    "target_candidate_id",
+    "target_sha256",
+    "current_sha256",
+    "expected_release_revision",
+    "app_test_run_id",
+    "agent_manifest_id",
+    "baseline_evidence_id",
+    "expires_at",
+    "plan_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "plan_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "workspace_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "operation": {
+      "enum": [
+        "deploy",
+        "rollback"
+      ]
+    },
+    "environment": {
+      "const": "demo-production"
+    },
+    "target_candidate_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "target_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "current_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "expected_release_revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "app_test_run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent_manifest_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "baseline_evidence_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "plan_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "deploy"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "app_test_run_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "agent_manifest_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "rollback"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "baseline_evidence_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      }
+    }
+  ]
+}

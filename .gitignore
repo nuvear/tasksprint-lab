@@ -1,0 +1,23 @@
+.local/
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+runtime/
+reports/private/
+exports/private/
+playwright/.auth/
+# Phase 02 additions (explicit per build card)
+.local/
+*.sqlite3
+.venv/
+__pycache__/
