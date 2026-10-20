@@ -24,7 +24,7 @@ PUBLIC_ROUTES = frozenset({("GET", "/healthz")})
 
 AGENT_RUNTIME_ROLES = frozenset({"coordinator", "product_owner", "developer", "qa", "operations", "application"})
 
-# (method, route template) -> roles allowed. Phase 02 subset of Architecture A8.
+# (method, route template) -> roles allowed. Phase 02-03 subset of Architecture A8.
 PERMISSIONS: dict[tuple[str, str], frozenset[str]] = {
     ("POST", "/v1/runs"): AGENT_RUNTIME_ROLES,
     ("GET", "/v1/state"): frozenset({"coordinator", "product_owner", "developer", "qa", "operations"}),
@@ -34,6 +34,8 @@ PERMISSIONS: dict[tuple[str, str], frozenset[str]] = {
     ("POST", "/v1/memory"): frozenset({"coordinator"}),
     ("GET", "/v1/candidates/{candidate_id}"): frozenset({"developer", "qa", "operations"}),
     ("POST", "/v1/candidates"): frozenset({"developer"}),
+    ("POST", "/v1/test-runs"): frozenset({"qa"}),
+    ("GET", "/v1/test-runs/{test_run_id}"): frozenset({"qa", "operations", "coordinator"}),
     ("GET", "/v1/releases"): frozenset({"operations", "application"}),
     ("GET", "/v1/app-health"): frozenset({"operations", "application"}),
     ("GET", "/v1/events"): frozenset({"coordinator", "qa", "operations", "instructor", "evaluator"}),

@@ -8,11 +8,16 @@ Grammar (nothing else is accepted):
     status             active artifact hash, release revision, business health
 
 The parser cannot execute code, select endpoints, run SQL or carry credentials.
-Phase 02 has no runner: for the registered starter baseline, ``complete``
-returns FEATURE_UNAVAILABLE (the starter's documented contract, see
-instructor/fixtures/starter_v0.py); for any other active artifact it returns
-RUNNER_UNAVAILABLE and changes nothing. Phase 03 replaces this with the
-bounded interpreter's result. Candidate source is never executed here.
+
+``complete`` (Phase 03) resolves the active artifact by content hash, verifies
+the stored bytes, takes a snapshot of the workspace's task records and their
+row revisions, and sends the source plus a COPY of those records to the
+separate bounded runner. The runner's result is data: trusted lab code checks
+its shape and permits exactly one kind of change (the target task's completed
+flag false -> true; nothing added, dropped or edited). The change is committed
+only if the active release and every task revision are unchanged since the
+snapshot (otherwise 409 REVISION_CONFLICT, nothing written). Candidate source
+is never executed in this process.
 """
 from __future__ import annotations
 
@@ -20,11 +25,14 @@ import re
 import sqlite3
 import unicodedata
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
+from .candidates import source_text
 from .clock import utc_now_iso
-from .releases import active_drill, app_health, is_baseline, resolve_active_candidate
-from .store import LabError
+from .contract import permitted_change, shape_problems
+from .releases import active_drill, app_health, get_active, resolve_active_candidate
+from .runner_client import RunnerClient
+from .store import LabError, Store
 
 MAX_COMMAND_CHARS = 200
 MAX_TITLE_CHARS = 120
@@ -115,19 +123,106 @@ def execute(conn: sqlite3.Connection, workspace_id: str, command: Command) -> di
                f"Release revision {health.get('release_revision')}; business health: {health['status']}")
         return {"ok": True, "code": "STATUS", "message": msg, "data": health}
     if command.verb == "complete":
-        active, cand = resolve_active_candidate(conn, workspace_id)
-        artifact = {"candidate_id": cand["candidate_id"], "sha256": cand["sha256"],
-                    "release_revision": active["release_revision"]}
-        if active_drill(conn, workspace_id, cand["sha256"]) is not None:
-            return {"ok": False, "code": "COMPLETION_UNAVAILABLE_DRILL",
-                    "message": "Completion is temporarily unavailable (instructor incident drill).",
-                    "data": {"artifact": artifact}}
-        if is_baseline(conn, workspace_id, cand["sha256"]):
-            return {"ok": False, "code": "FEATURE_UNAVAILABLE",
-                    "message": "Task completion is not available in the starter version (v0).",
-                    "data": {"artifact": artifact, "task_id": command.arg, "tasks_changed": 0,
-                             "evaluated_by": "registered starter-baseline contract; candidate source not executed (runner is Phase 03)"}}
-        return {"ok": False, "code": "RUNNER_UNAVAILABLE",
-                "message": "The bounded candidate runner is not built yet (Phase 03); nothing was changed.",
-                "data": {"artifact": artifact, "task_id": command.arg, "tasks_changed": 0}}
+        raise LabError(500, "INTERNAL_ERROR", "complete is handled by complete_task (runner path)")
     raise LabError(400, "UNKNOWN_COMMAND", HELP)
+
+
+_MESSAGES = {
+    "FEATURE_UNAVAILABLE": "Task completion is not available in the active version.",
+    "TASK_NOT_FOUND": "No task with ID {task_id}; nothing was changed.",
+}
+
+
+def _result(ok: bool, code: str, message: str, **data: Any) -> dict[str, Any]:
+    return {"ok": ok, "code": code, "message": message, "data": data}
+
+
+def complete_task(store: Store, runner: RunnerClient | None, workspace_id: str, task_id: str, *,
+                  record: Callable[[sqlite3.Connection, dict[str, Any]], None]) -> dict[str, Any]:
+    """Interpret the active artifact for ``complete <ID>`` and commit a permitted result."""
+    with store.read() as conn:
+        active, cand = resolve_active_candidate(conn, workspace_id)
+        artifact = {"candidate_id": cand["candidate_id"], "sha256": cand["sha256"], "origin": cand["origin"],
+                    "release_revision": active["release_revision"]}
+        drill = active_drill(conn, workspace_id, cand["sha256"]) is not None
+        snapshot = _tasks(conn, workspace_id)
+        source = source_text(cand)
+
+    def finish(result: dict[str, Any]) -> dict[str, Any]:
+        with store.write() as conn:
+            record(conn, result)
+        return result
+
+    base = {"artifact": artifact, "task_id": task_id, "tasks_changed": 0}
+    if drill:
+        return finish(_result(False, "COMPLETION_UNAVAILABLE_DRILL",
+                              "Completion is temporarily unavailable (instructor incident drill).", **base))
+    if runner is None:
+        return finish(_result(False, "RUNNER_UNAVAILABLE",
+                              "The bounded runner is not configured; nothing was changed.", **base))
+    inputs = [{"id": t["id"], "title": t["title"], "completed": t["completed"]} for t in snapshot]
+    try:
+        doc = runner.evaluate(source=source, source_sha256=cand["sha256"], tasks=inputs, task_id=task_id)
+    except LabError as err:
+        if err.code != "RUNNER_UNAVAILABLE":
+            raise
+        return finish(_result(False, "RUNNER_UNAVAILABLE",
+                              "The bounded runner is unavailable; nothing was changed.", **base))
+    evaluation = {"evaluated_by": doc["runner_version"], "grammar_version": doc.get("grammar_version"),
+                  "status": doc["status"], "ops": doc["ops"], "interpreted_sha256": doc["source_sha256"]}
+    base["evaluation"] = evaluation
+    if doc["status"] == "rejected":
+        code = doc["error"]["code"]
+        return finish(_result(False, "CANDIDATE_REJECTED",
+                              f"The active version was rejected by the runner's validator ({code}); nothing was changed.",
+                              **base, candidate_error=doc["error"]))
+    if doc["status"] == "error":
+        code = doc["error"]["code"]
+        return finish(_result(False, "CANDIDATE_FAILED",
+                              f"The active version failed during bounded evaluation ({code}); nothing was changed.",
+                              **base, candidate_error=doc["error"]))
+    result = doc["result"]
+    problems = shape_problems(result)
+    if problems:
+        return finish(_result(False, "CANDIDATE_RESULT_INVALID",
+                              "The active version returned a malformed result; nothing was changed.",
+                              **base, problems=problems[:5]))
+    permitted, reason, completes = permitted_change(inputs, result, task_id)
+    if not permitted:
+        return finish(_result(False, "CANDIDATE_RESULT_REJECTED",
+                              f"The active version's result was not accepted ({reason}); nothing was changed.",
+                              **base, candidate_code=result["code"]))
+    code = result["code"]
+    if not completes:
+        if result["ok"]:
+            message = f"{task_id} is already complete; nothing was changed."
+        else:
+            message = _MESSAGES.get(code, f"The active version returned {code}; nothing was changed.").format(
+                task_id=task_id)
+        return finish(_result(bool(result["ok"]), code, message, **base))
+
+    target = next(t for t in snapshot if t["id"] == task_id)
+    with store.write() as conn:
+        current_active = get_active(conn, workspace_id)
+        if (current_active["active_sha256"] != cand["sha256"]
+                or current_active["release_revision"] != active["release_revision"]):
+            raise LabError(409, "REVISION_CONFLICT", "the active artifact changed during evaluation; nothing was changed",
+                           {"audit": {"task_id": task_id}})
+        if active_drill(conn, workspace_id, cand["sha256"]) is not None:
+            raise LabError(409, "REVISION_CONFLICT", "an incident drill started during evaluation; nothing was changed",
+                           {"audit": {"task_id": task_id}})
+        now_rows = [(t["id"], t["revision"]) for t in _tasks(conn, workspace_id)]
+        if now_rows != [(t["id"], t["revision"]) for t in snapshot]:
+            raise LabError(409, "REVISION_CONFLICT", "task records changed during evaluation; nothing was changed",
+                           {"audit": {"task_id": task_id}})
+        cur = conn.execute(
+            "UPDATE tasks SET completed = 1, revision = revision + 1, updated_at = ?"
+            " WHERE workspace_id = ? AND task_id = ? AND revision = ? AND completed = 0",
+            (utc_now_iso(), workspace_id, task_id, target["revision"]))
+        if cur.rowcount != 1:
+            raise LabError(409, "REVISION_CONFLICT", "task record changed during evaluation; nothing was changed")
+        updated = {"id": task_id, "title": target["title"], "completed": True, "revision": target["revision"] + 1}
+        out = _result(True, code, f"Completed {task_id}: {target['title']}",
+                      **{**base, "tasks_changed": 1, "task": updated})
+        record(conn, out)
+    return out

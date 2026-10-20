@@ -52,10 +52,16 @@ class CandidateSubmit(Strict):
     base_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
 
 
+class TestRunCreate(Strict):
+    candidate_id: Annotated[str, Field(pattern=r"^cand_[0-9a-f]{24}$")]
+
+
 class AppCommand(Strict):
     command: Annotated[str, Field(min_length=1, max_length=200)]
 
 
 class InstructorAction(Strict):
-    action: Literal["seed", "reset_preview"]
+    action: Literal["seed", "reset_preview", "load_fixture"]
     workspace_id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]{2,63}$")]
+    # Only for load_fixture: an allowlisted, labelled instructor fixture name.
+    fixture: Literal["faulty_delete", "reference_complete"] | None = None

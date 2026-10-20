@@ -1,7 +1,9 @@
 """Instructor-only allowlisted actions (Architecture A8 /v1/instructor/actions, A12).
 
-Phase 02 implements ``seed`` and ``reset_preview``. Fixture loading, drills,
-stop and the confirmed reset are later phases. Only designated workspaces from
+Phase 02 implements ``seed`` and ``reset_preview``; Phase 03 adds
+``load_fixture`` (allowlisted, labelled faulty/reference fixtures registered as
+immutable candidates with fixed provenance). Drills, stop and the confirmed
+reset are later phases. Only designated workspaces from
 TASKSPRINT_ALLOWED_WORKSPACES can be targeted, and only with demo mode enabled.
 """
 from __future__ import annotations
@@ -63,6 +65,33 @@ def seed(conn: sqlite3.Connection, settings: Settings, workspace_id: str, reques
     return {"action": "seed", "workspace_id": workspace_id, "generation": 1,
             "starter": {**cand_view, "fixture_label": "FIXTURE: known healthy starter baseline"},
             "release": receipt, "tasks_seeded": [t for t, _ in SEED_TASKS], "sprint_id": SEED_SPRINT[0]}
+
+
+FIXTURES = {
+    "faulty_delete": ("faulty_delete.py", "fixture-faulty", "FIXTURE: known faulty (deletes the completed task)"),
+    "reference_complete": ("reference_complete.py", "fixture-reference", "FIXTURE: instructor-only reference"),
+}
+
+
+def load_fixture(conn: sqlite3.Connection, settings: Settings, workspace_id: str, fixture: str | None,
+                 request_id: str) -> dict[str, Any]:
+    _designated(settings, workspace_id)
+    if fixture not in FIXTURES:
+        raise LabError(422, "UNKNOWN_FIXTURE", "fixture must be one of: " + ", ".join(sorted(FIXTURES)))
+    if get_workspace(conn, workspace_id) is None:
+        raise LabError(404, "WORKSPACE_NOT_FOUND", "seed the workspace first")
+    filename, origin, label = FIXTURES[fixture]
+    path = Path(settings.fixtures_dir) / filename
+    if not path.is_file():
+        raise LabError(500, "FIXTURE_MISSING", "fixture file is missing")
+    view, created = put_candidate(conn, workspace_id=workspace_id, source=path.read_bytes(), origin=origin,
+                                  author_role="instructor", label=label)
+    record_event(conn, request_id=request_id, actor_role="instructor", action="instructor.load_fixture",
+                 outcome="ok" if created else "duplicate", workspace_id=workspace_id,
+                 details={"fixture": fixture, "candidate_id": view["candidate_id"], "sha256": view["sha256"],
+                          "origin": origin})
+    return {"action": "load_fixture", "workspace_id": workspace_id, "fixture": fixture, "created": created,
+            "candidate": view}
 
 
 def reset_preview(conn: sqlite3.Connection, settings: Settings, workspace_id: str) -> dict[str, Any]:

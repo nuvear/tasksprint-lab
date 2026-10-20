@@ -19,10 +19,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import SERVICE_VERSION, app_commands, audit, candidates, instructor, memory, releases, runs, state
+from . import SERVICE_VERSION, app_commands, audit, candidates, instructor, memory, releases, runs, state, testing
 from .auth import PUBLIC_ROUTES, Authenticator, Identity, allowed_roles
 from .config import Settings, load_settings, valid_workspace_id
-from .schemas import AppCommand, CandidateSubmit, InstructorAction, MemorySave, RunCreate, StoryCreate, TransitionRequest
+from .runner_client import RunnerClient, build_runner
+from .schemas import (AppCommand, CandidateSubmit, InstructorAction, MemorySave, RunCreate, StoryCreate, TestRunCreate,
+                      TransitionRequest)
 from .store import LabError, Store, require_active_workspace
 
 log = logging.getLogger("tasksprint.lab")
@@ -111,8 +113,9 @@ class Ctx:
     request_id: str
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, runner: RunnerClient | None = None) -> FastAPI:
     settings = settings or load_settings()
+    runner = runner if runner is not None else build_runner(settings)
     store = Store(settings.db_path, settings.journal_mode)
     store.migrate()
     authenticator = Authenticator(settings.token_hashes)
@@ -174,9 +177,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return Ctx(identity, ws_id, run_id, _rid(request))
 
     def write_op(c: Ctx, action: str, fn: Callable[[sqlite3.Connection], Any]) -> Any:
+        return audited(c, action, lambda: _in_write(fn))
+
+    def _in_write(fn: Callable[[sqlite3.Connection], Any]) -> Any:
+        with store.write() as conn:
+            return fn(conn)
+
+    def audited(c: Ctx, action: str, fn: Callable[[], Any]) -> Any:
         try:
-            with store.write() as conn:
-                return fn(conn)
+            return fn()
         except LabError as err:
             if err.status in (403, 409, 422, 429):
                 denial_event(c.request_id, c.identity, action, c.workspace_id, c.run_id, err)
@@ -187,6 +196,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                   openapi_url=None, dependencies=[Depends(authorize)])
     app.state.settings = settings
     app.state.store = store
+    app.state.runner_configured = runner is not None
     app.add_middleware(RequestContextMiddleware, max_body_bytes=settings.max_body_bytes)
 
     @app.exception_handler(LabError)
@@ -279,11 +289,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not candidates.verify_integrity(row):
                 raise LabError(500, "ARTIFACT_INTEGRITY_ERROR", "stored candidate does not match its hash")
             allowed = candidates.source_read_allowed(conn, c.workspace_id, c.identity.role, row)
+            diff = candidates.diff_from_base(conn, c.workspace_id, c.identity.role, row) if allowed else None
         if not allowed:
             denial_event(c.request_id, c.identity, "candidate.read", c.workspace_id, c.run_id,
                          LabError(403, "SOURCE_NOT_PERMITTED", "", {"audit": {"candidate_id": candidate_id}}))
             raise LabError(403, "SOURCE_NOT_PERMITTED", "this candidate's source is not readable by this role")
-        return candidates.candidate_view(row, include_source=True)
+        return {**candidates.candidate_view(row, include_source=True), "base_diff": diff}
 
     @app.post("/v1/candidates", status_code=201)
     def submit_candidate(body: CandidateSubmit, c: Ctx = Depends(ctx)) -> dict:
@@ -312,9 +323,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with store.read() as conn:
             return {"events": audit.list_events(conn, c.workspace_id, limit)}
 
+    @app.post("/v1/test-runs", status_code=201)
+    def create_test_run(body: TestRunCreate, c: Ctx = Depends(ctx)) -> dict:
+        return audited(c, "test_run.create", lambda: testing.run_protected_suite(
+            store, runner, workspace_id=c.workspace_id, candidate_id=body.candidate_id, request_id=c.request_id,
+            actor_role=c.identity.role, run_id=c.run_id))
+
+    @app.get("/v1/test-runs/{test_run_id}")
+    def read_test_run(test_run_id: str, c: Ctx = Depends(ctx)) -> dict:
+        if not (test_run_id.startswith("tr_") and len(test_run_id) == 27):
+            raise LabError(404, "TEST_RUN_NOT_FOUND", "test run does not exist in this workspace")
+        with store.read() as conn:
+            return testing.get_report(conn, c.workspace_id, test_run_id)
+
     @app.post("/v1/app/commands")
     def app_command(body: AppCommand, c: Ctx = Depends(ctx)) -> dict:
         cmd = app_commands.parse(body.command)
+
+        def record(conn: sqlite3.Connection, result: dict) -> None:
+            audit.record_event(conn, request_id=c.request_id, actor_role=c.identity.role, action="app.complete",
+                               outcome=result["code"], workspace_id=c.workspace_id, run_id=c.run_id,
+                               details={"task_id": cmd.arg,
+                                        "artifact_sha256": (result["data"].get("artifact") or {}).get("sha256"),
+                                        "tasks_changed": result["data"].get("tasks_changed"),
+                                        "runner": (result["data"].get("evaluation") or {}).get("evaluated_by"),
+                                        "ops": (result["data"].get("evaluation") or {}).get("ops")})
+
+        if cmd.verb == "complete":
+            return audited(c, "app.complete", lambda: app_commands.complete_task(
+                store, runner, c.workspace_id, cmd.arg or "", record=record))
 
         def op(conn: sqlite3.Connection) -> dict:
             result = app_commands.execute(conn, c.workspace_id, cmd)
@@ -330,8 +367,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def instructor_action(body: InstructorAction, request: Request) -> dict:
         identity: Identity = request.state.identity
         c = Ctx(identity, body.workspace_id, None, _rid(request))
+        if body.action != "load_fixture" and body.fixture is not None:
+            raise LabError(422, "UNEXPECTED_FIELD", "fixture is only accepted with load_fixture")
         if body.action == "seed":
             return write_op(c, "instructor.seed", lambda conn: instructor.seed(conn, settings, body.workspace_id, c.request_id))
+        if body.action == "load_fixture":
+            return write_op(c, "instructor.load_fixture", lambda conn: instructor.load_fixture(
+                conn, settings, body.workspace_id, body.fixture, c.request_id))
         with store.read() as conn:
             return instructor.reset_preview(conn, settings, body.workspace_id)
 

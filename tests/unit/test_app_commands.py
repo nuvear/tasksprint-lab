@@ -95,12 +95,12 @@ def test_status_reports_hash_revision_and_business_health(seeded):
     assert len(data["active_sha256"]) == 64
     assert data["release_revision"] == 0
     assert data["status"] == "healthy"
-    assert data["features"]["complete"].startswith("FEATURE_UNAVAILABLE")
+    assert "bounded runner" in data["features"]["complete"]
     assert data["active_sha256"] in body["message"]
 
 
-def test_non_baseline_active_artifact_is_not_executed(seeded):
-    """Phase 02 has no runner: any non-baseline artifact yields RUNNER_UNAVAILABLE, no mutation."""
+def test_non_baseline_artifact_is_interpreted_and_malformed_result_changes_nothing(seeded):
+    """Phase 03: the active source is interpreted; a result outside the contract is not committed."""
     sub = seeded.client.post("/v1/candidates", json={"source": "def complete(tasks, task_id):\n    return 1\n"},
                              headers=headers("developer")).json()
     with seeded.store().write() as conn:  # trusted test-only pointer change (no deploy path exists yet)
@@ -108,7 +108,9 @@ def test_non_baseline_active_artifact_is_not_executed(seeded):
                      (sub["candidate_id"], sub["sha256"]))
     before = seeded.cmd("list").json()["data"]["tasks"]
     body = seeded.cmd("complete T001").json()
-    assert body["code"] == "RUNNER_UNAVAILABLE" and body["ok"] is False
+    assert body["code"] == "CANDIDATE_RESULT_INVALID" and body["ok"] is False
+    assert body["data"]["evaluation"]["interpreted_sha256"] == sub["sha256"]
+    assert body["data"]["tasks_changed"] == 0
     assert seeded.cmd("list").json()["data"]["tasks"] == before
 
 

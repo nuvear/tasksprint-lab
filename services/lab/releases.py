@@ -104,7 +104,8 @@ def app_health(conn: sqlite3.Connection, workspace_id: str) -> dict[str, Any]:
         "features": {
             "add": "available",
             "list": "available",
-            "complete": "FEATURE_UNAVAILABLE (starter baseline)" if baseline else "requires runner (Phase 03)",
+            "complete": ("interpreted per command by the bounded runner; starter baseline returns FEATURE_UNAVAILABLE"
+                         if baseline else "interpreted per command by the bounded runner"),
         },
         "checks": checks,
     }

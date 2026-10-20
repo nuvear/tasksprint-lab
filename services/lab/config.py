@@ -52,6 +52,10 @@ class Settings:
     fixtures_dir: str = str(REPO_ROOT / "instructor" / "fixtures")
     max_body_bytes: int = 64 * 1024
     journal_mode: str = "TRUNCATE"
+    # Phase 03: the separate bounded runner. The token is transport-only (lab -> runner).
+    runner_url: str = ""
+    runner_token: str = field(default="", repr=False)
+    runner_timeout_s: float = 5.0
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -117,6 +121,13 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
         raise ConfigError("TASKSPRINT_MAX_BODY_BYTES must be between 1 KiB and 1 MiB")
 
     fixtures = source.get("TASKSPRINT_FIXTURES_DIR", str(REPO_ROOT / "instructor" / "fixtures"))
+
+    runner_url = source.get("TASKSPRINT_RUNNER_URL", "").strip().rstrip("/")
+    if runner_url and not re.match(r"^https?://[A-Za-z0-9.\-]+(:\d{1,5})?$", runner_url):
+        raise ConfigError("TASKSPRINT_RUNNER_URL must be http(s)://host[:port] with no path")
+    runner_token = source.get("TS_RUNNER_TOKEN", "").strip()
+    if runner_url and len(runner_token) < 32:
+        raise ConfigError("TS_RUNNER_TOKEN (at least 32 characters) is required when TASKSPRINT_RUNNER_URL is set")
     return Settings(
         db_path=db_path,
         demo_enabled=source.get("TASKSPRINT_DEMO_ENABLED", "false").strip().lower() == "true",
@@ -125,6 +136,8 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
         fixtures_dir=fixtures,
         max_body_bytes=max_body,
         journal_mode=journal,
+        runner_url=runner_url,
+        runner_token=runner_token,
     )
 
 
