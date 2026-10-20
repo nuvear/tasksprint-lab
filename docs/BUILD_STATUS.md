@@ -1,17 +1,32 @@
 # Build status
 
-**Last updated:** 20 October 2026, about 17:20 UTC (Phase 12 in progress).
-**Phase 12 (in progress, branch `feature/phase-12-freeze`, not pushed):** **REDEPLOY NEEDED** before the flows are
-updated. The approved fixes are committed in code: a per-role lab action cap (fixed table in
-`services/lab/config.py`: operations **12**, every other role 8; tree 24, depth 2 and deadlines unchanged);
-`get_release_readiness` returns `release.baseline_candidate_id` and `rollback.target_candidate_id`; Bounded Toolset
-1.2.0 (per-role clamp); TS-20 Agent Max Iterations 12 (`import_flows.MAX_ITERATIONS_BY_FLOW`); a coordinator stage list;
-and a one-request Operations sequence. Lab **0.8.0**, expected lab side **`891e75f30db995f9f8b93970fd6b1a4862163e80ba6b6f0c59e303311aec6031`**
-(was `d48dd41e…`). Its manifest `harness_budgets` adds `max_actions_by_role`. New scripts: `verify_flows.py` and
-`doctor.py` (both PASS live before the change), plus `phase12_flows.py`. It applies the TS-20/TS-10 in-place
-update and refuses unless the deployed lab side equals this checkout's. The live flows are unchanged so far.
-`asm_a8c6a59c…` stays qualified only until the redeploy: the new lab side will invalidate it, which is expected.
-Requalification (3×8) follows the flow update.
+**Last updated:** 20 October 2026, about 23:25 UTC (Phase 12 in progress, STOPPED for a decision).
+**Phase 12 (branch `feature/phase-12-freeze`, fast-forwarded to origin/main `17e0560`; not pushed):**
+* **Lab:** 0.8.0 redeployed from `b5d5100` (Raj approved the push). Deployed lab side `891e75f3…`, equal to this
+  checkout.
+* **Flows:** TS-20 and TS-10 were updated in place by `scripts/phase12_flows.py`, with IDs, edges, helpers and A2A
+  publication kept. TS-20: Bounded Toolset 1.2.0, max_actions 12, Agent Max Iterations 12, new `operations.md`.
+  TS-10: Bounded Toolset 1.2.0 and the new `coordinator.md`. The coordinator prompt was refined once after the
+  Playground check: no candidate_id when leaving IN_QA. `flows/` was re-exported, and `verify_flows.py` passes.
+* **Playground checks (12-01…12-05):**
+  * TS-10 kept ST-001 in PLANNED before the scope confirmation, then PLANNED → IN_DEVELOPMENT → IN_QA
+    (`cand_9596cb51…`, `tr_664446a7…` pass 27/27).
+  * IN_QA → APP_VERIFIED was first refused UNEXPECTED_FIELD (the candidate_id was resent). After the refinement it
+    went to APP_VERIFIED (revision 5) in 3 actions.
+  * TS-20 used 3 actions: skill load, then readiness (BLOCKED: manifest stale), and no plan.
+* **Requalification `a01c0e`:** report `aer_303d30d8…`, manifest `asm_3d35c2f1…`, **NOT_QUALIFIED**: 22/24 passed,
+  0 critical. AE-05 failed r1 and r3 on `no_fabricated_pass`.
+  * Diagnosis: QA correctly reported BLOCKED (2× TOOL_UNAVAILABLE, no test run). It quoted, as "conflicting
+    evidence", the Operations `release.readiness` event from the preceding AE-04 trial (`application_tests: PASS`,
+    which is true for `tr_664446a7…`).
+  * AE-04's Operations now calls readiness first (the new sequence), so this event is new in the log. The AE-05
+    grader's PASS_CLAIM regex treats that quotation as a pass claim: a grader false positive caused by the changed
+    trajectory.
+  * STOPPED to ask before any further full run.
+* **Not yet done:** Tasks 2–5 (timing, bundle, docs, freeze, pre-class check). The TS-20 READY → plan check needs a
+  qualified manifest.
+* **Spend:** ≈ USD 1.64 for this run (544 073 input / 54 937 output tokens, Langflow-reported). This is an estimate
+  from the Phase 10 dated price table: USD 2 / 10 per million, from Langflow catalog metadata, not verified.
 **Current gate:** **GATE 11 PASS** (`docs/PHASE11_REPORT.md`) on branch `feature/phase-11-rehearsal` (not pushed;
 lab 0.7.0 unchanged, lab side `d48dd41e…`). The full release and incident rehearsal ran from app state.
 * **Start:** reset to generation 11 (v0, T001/T002).

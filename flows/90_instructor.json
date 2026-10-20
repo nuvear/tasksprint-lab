@@ -556,7 +556,8 @@
                 ]
               }
             },
-            "tool_mode": false
+            "tool_mode": false,
+            "lf_version": "1.12.5"
           },
           "showNode": true,
           "type": "TaskSprintInstructorControl",
@@ -790,7 +791,8 @@
               "is_refresh": false
             },
             "tool_mode": false,
-            "last_updated": "2026-10-20T14:26:02.679Z"
+            "last_updated": "2026-10-20T23:04:02.509Z",
+            "lf_version": "1.12.5"
           },
           "showNode": true,
           "type": "HumanInput",
@@ -1046,7 +1048,8 @@
                 ]
               }
             },
-            "tool_mode": false
+            "tool_mode": false,
+            "lf_version": "1.12.5"
           },
           "showNode": true,
           "type": "TaskSprintReviewDecision",

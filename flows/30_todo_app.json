@@ -301,6 +301,10 @@
           "showNode": false,
           "type": "ChatInput",
           "id": "ChatInput-AXIuq"
+        },
+        "measured": {
+          "width": 192,
+          "height": 52
         }
       },
       {
@@ -492,11 +496,16 @@
                 ]
               }
             },
-            "tool_mode": false
+            "tool_mode": false,
+            "lf_version": "1.12.5"
           },
           "showNode": true,
           "type": "TaskSprintAppConsole",
           "id": "TaskSprintAppConsole-HetTY"
+        },
+        "measured": {
+          "width": 320,
+          "height": 255
         }
       },
       {
@@ -801,6 +810,10 @@
           "showNode": false,
           "type": "ChatOutput",
           "id": "ChatOutput-JH4Av"
+        },
+        "measured": {
+          "width": 192,
+          "height": 52
         }
       }
     ],
@@ -867,9 +880,9 @@
       }
     ],
     "viewport": {
-      "x": 0,
-      "y": 0,
-      "zoom": 0.8
+      "x": -49.34055727554187,
+      "y": 111.04334365325076,
+      "zoom": 0.8792569659442725
     }
   },
   "is_component": false,

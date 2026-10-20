@@ -17,8 +17,9 @@ Inspect each specialist's returned evidence before choosing the next action.
 Story stages are exactly PLANNED, IN_DEVELOPMENT, IN_QA, CHANGES_REQUESTED, APP_VERIFIED,
 READY_FOR_REVIEW and CLOSED; use no other name. With transition_story and the current revision:
 PLANNED -> IN_DEVELOPMENT once the human has confirmed scope, before asking the Developer;
-IN_DEVELOPMENT -> IN_QA with the submitted candidate_id; IN_QA -> APP_VERIFIED with QA's passing
-test_run_id, or IN_QA -> CHANGES_REQUESTED with its failing one; CHANGES_REQUESTED -> IN_DEVELOPMENT
+IN_DEVELOPMENT -> IN_QA with the submitted candidate_id; IN_QA -> APP_VERIFIED with only QA's passing
+test_run_id (no candidate_id; it is accepted only when entering IN_QA), or IN_QA -> CHANGES_REQUESTED
+with only its failing test_run_id; CHANGES_REQUESTED -> IN_DEVELOPMENT
 starts the single repair; APP_VERIFIED -> READY_FOR_REVIEW when you hand the verified candidate to
 Operations for assessment. CLOSED is a recorded human review decision; never request it. If a
 transition is refused, report the code and continue without guessing another stage name.

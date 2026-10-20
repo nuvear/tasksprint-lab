@@ -1069,23 +1069,6 @@
                     }
                   },
                   {
-                    "name": "gpt-6-luna",
-                    "icon": "OpenAI",
-                    "category": "OpenAI",
-                    "provider": "OpenAI",
-                    "metadata": {
-                      "context_length": 128000,
-                      "model_class": "ChatOpenAI",
-                      "model_name_param": "model",
-                      "api_key_param": "api_key",
-                      "max_tokens_field_name": "max_tokens",
-                      "reasoning": true,
-                      "reasoning_models": [
-                        "gpt-6-luna"
-                      ]
-                    }
-                  },
-                  {
                     "name": "gpt-6-sol",
                     "icon": "OpenAI",
                     "category": "OpenAI",
@@ -1099,6 +1082,23 @@
                       "reasoning": true,
                       "reasoning_models": [
                         "gpt-6-sol"
+                      ]
+                    }
+                  },
+                  {
+                    "name": "gpt-6-luna",
+                    "icon": "OpenAI",
+                    "category": "OpenAI",
+                    "provider": "OpenAI",
+                    "metadata": {
+                      "context_length": 128000,
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "api_key_param": "api_key",
+                      "max_tokens_field_name": "max_tokens",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-6-luna"
                       ]
                     }
                   },
@@ -1338,7 +1338,7 @@
               }
             },
             "tool_mode": false,
-            "last_updated": "2026-10-20T12:47:17.954Z",
+            "last_updated": "2026-10-20T16:03:28.594Z",
             "lf_version": "1.12.5"
           },
           "showNode": true,
