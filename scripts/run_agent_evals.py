@@ -64,6 +64,10 @@ SETTLE_S = 7          # > the lab's 5 s trial-window grace: setup/teardown actio
 POST_TRIAL_S = 4      # let late events land before observing
 RUN_TIMEOUT_S = 165   # one flow run; above the 90/180 s agent deadlines, below the owner sandbox's 180 s limit
 EPOCH = "2000-01-01T00:00:00Z"
+# Wall-clock time of the last protected (instructor) action: reset, fixture, outage on/off. A flow run starts
+# only SETTLE_S after it, so no setup/teardown can fall inside a trial window (the lab would count it as a
+# critical PROTECTED_ACTION_IN_TRIAL; observed once in rehearsal 00f819 and fixed here).
+LAST_PROTECTED = {"at": 0.0}
 _SECRETISH = re.compile(r"(Bearer\s+\S+|ts_[a-z]+_[A-Za-z0-9_\-]{16,}|sk-[A-Za-z0-9_\-]{8,}|x-api-key[\"':=\s]+\S+)",
                         re.I)
 VOLATILE_FIELDS = {"input_value", "_frontend_node_flow_id", "_frontend_node_folder_id", "session_id", "context_id",
@@ -130,6 +134,8 @@ class Lab:
                        timeout=90)
 
     def instructor(self, action: str, **fields) -> dict:
+        if action != "reset_preview":
+            LAST_PROTECTED["at"] = time.time()
         return self.ok("POST", "/v1/instructor/actions", "instructor", {"action": action, "workspace_id": WS, **fields},
                        ws=None)
 
@@ -317,6 +323,24 @@ def _tool_trace(msgs: list[dict]) -> tuple[list[dict], list[str]]:
     return trace, outputs
 
 
+def _full_index(lab: "Lab") -> set[str]:
+    """Every record ID of the workspace: observation pages are followed until the events are complete.
+
+    Fixed after rehearsal 00f819: the index was built once at --begin, so a real event created by an
+    EARLIER trial of the same run (AE-04's readiness event, quoted by QA in AE-05) was reported as unknown.
+    trial_finish now refreshes the full index whenever a quoted ID is not yet known; paging also removes
+    the single-page (5,000 events) limit.
+    """
+    since, ids = EPOCH, set()
+    for _ in range(50):
+        page = lab.observe(since, limit=5000)
+        ids |= _known_ids(page)
+        if not page.get("events_truncated"):
+            return ids
+        since = page["events"][-1]["created_at"]
+    raise SetupError("could not page through the workspace events")
+
+
 def _known_ids(*observations: dict) -> set[str]:
     ids: set[str] = set()
     for o in observations:
@@ -422,7 +446,7 @@ def trial_setup(case_id: str, rep: int, tag: str, lab: Lab, ctx: dict) -> dict:
 
 def trial_run(pend: dict, lab: Lab, lf: Langflow, ctx: dict) -> dict:
     case = case_defs.CASES[pend["case_id"]]
-    wait = pend["setup_done_at"] + SETTLE_S - time.time()
+    wait = max(pend["setup_done_at"], LAST_PROTECTED["at"]) + SETTLE_S - time.time()
     if wait > 0:
         time.sleep(wait)
     prompt = case["prompt"].format(**ctx)
@@ -463,6 +487,8 @@ def trial_finish(pend: dict, lab: Lab, lf: Langflow, ctx: dict, index: set[str],
     late = lab.observe(iso(hi), limit=500)
     tear = teardown(case_id, lab)
     o = build_observation(case_id, case, session, lo, hi, obs, late, pend["text"], ctx, index, tool_outputs)
+    if set(graders.ID_RE.findall(pend["text"])) - o["known_ids"]:
+        o["known_ids"] |= _full_index(lab)  # an ID from an earlier trial of this run: refresh the whole index
     checks = graders.grade(case_id, o)
     passed = all(c["passed"] is True for c in checks)
     status = "error" if pend["status_code"] != 200 else ("pass" if passed else "fail")
@@ -640,6 +666,7 @@ def step(lab: Lab, lf: Langflow, raw_dir: Path, budget_s: float) -> int:
     t0 = time.monotonic()
     state = _load(raw_dir)
     ctx, index, n = state["ctx"], set(state["index"]), 0
+    LAST_PROTECTED["at"] = max(LAST_PROTECTED["at"], state.get("last_protected_at", 0.0))
     for u in state["units"]:
         if u["done"]:
             continue
@@ -659,6 +686,7 @@ def step(lab: Lab, lf: Langflow, raw_dir: Path, budget_s: float) -> int:
                 if n and budget_s < 10 ** 8:
                     break  # start a model run only at the start of a call (sandbox command limit)
                 u["phase"] = "running"
+                state["last_protected_at"] = LAST_PROTECTED["at"]
                 _save(raw_dir, state)
                 u["pend"], u["phase"] = trial_run(u["pend"], lab, lf, ctx), "finish"
             elif u["phase"] == "finish":
@@ -669,6 +697,7 @@ def step(lab: Lab, lf: Langflow, raw_dir: Path, budget_s: float) -> int:
             u["done"] = True
         n += 1
         state["ctx"] = ctx
+        state["last_protected_at"] = LAST_PROTECTED["at"]
         _save(raw_dir, state)
         if u["kind"] == "trial" and not u["done"] and budget_s < 10 ** 8:
             break  # setup or flow run done: the next call starts the run / observes (sandbox command limit)
@@ -786,7 +815,7 @@ def main(argv: list[str] | None = None) -> int:
             units += [{"kind": "trial", "case": cid, "rep": rep, "phase": "setup", "done": False} for cid in order]
         units.append({"kind": "submit", "done": False})
         state = {"tag": tag, "purpose": "qualification" if full else "partial", "label": a.label[:80],
-                 "repeats": a.repeats, "ctx": ctx, "index": sorted(_known_ids(lab.observe(EPOCH, limit=5000))),
+                 "repeats": a.repeats, "ctx": ctx, "index": sorted(_full_index(lab)),
                  "run_lo": iso(lab.now().replace(microsecond=0) - timedelta(seconds=2)), "t_start": time.time(),
                  "units": units, "trials": [], "resets": [], "result": None}
         _save(raw_dir, state)
