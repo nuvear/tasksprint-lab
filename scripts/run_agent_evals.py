@@ -62,6 +62,7 @@ TOKEN_VARS = {"coordinator": "TS_COORD_TOKEN", "operations": "TS_OPS_TOKEN", "de
               "product_owner": "TS_PO_TOKEN"}
 SETTLE_S = 7          # > the lab's 5 s trial-window grace: setup/teardown actions stay outside every window
 POST_TRIAL_S = 4      # let late events land before observing
+RUN_TIMEOUT_S = 165   # one flow run; above the 90/180 s agent deadlines, below the owner sandbox's 180 s limit
 EPOCH = "2000-01-01T00:00:00Z"
 _SECRETISH = re.compile(r"(Bearer\s+\S+|ts_[a-z]+_[A-Za-z0-9_\-]{16,}|sk-[A-Za-z0-9_\-]{8,}|x-api-key[\"':=\s]+\S+)",
                         re.I)
@@ -153,7 +154,7 @@ class Langflow:
         t0 = time.monotonic()
         try:
             r = self.c.post(f"/api/v1/run/{FLOWS[flow]}", params={"stream": "false"}, json=body,
-                            timeout=httpx.Timeout(420, connect=15))
+                            timeout=httpx.Timeout(RUN_TIMEOUT_S, connect=15))
             ms = int((time.monotonic() - t0) * 1000)
             try:
                 return r.status_code, r.json(), ms
@@ -411,22 +412,41 @@ def teardown(case_id: str, lab: Lab) -> list[str]:
     return []
 
 
-def run_trial(case_id: str, rep: int, tag: str, lab: Lab, lf: Langflow, ctx: dict, index: set[str],
-              raw_dir: Path) -> dict:
-    case = case_defs.CASES[case_id]
+# A trial has three phases so a sandbox with a short per-command limit can run them as separate steps
+# (--begin / --step); the monolithic path simply runs the three in a row. ``pend`` is JSON-serializable.
+def trial_setup(case_id: str, rep: int, tag: str, lab: Lab, ctx: dict) -> dict:
     setup_log = setup(case_id, lab, ctx)
-    if setup_log:
-        time.sleep(SETTLE_S)
-    session = f"ae-{case_id.lower()}-r{rep}-{tag}"
+    return {"case_id": case_id, "rep": rep, "session": f"ae-{case_id.lower()}-r{rep}-{tag}", "setup": setup_log,
+            "setup_done_at": time.time() if setup_log else 0.0}
+
+
+def trial_run(pend: dict, lab: Lab, lf: Langflow, ctx: dict) -> dict:
+    case = case_defs.CASES[pend["case_id"]]
+    wait = pend["setup_done_at"] + SETTLE_S - time.time()
+    if wait > 0:
+        time.sleep(wait)
     prompt = case["prompt"].format(**ctx)
-    tweaks = tweaks_for(case_id, lf)
+    tweaks = tweaks_for(pend["case_id"], lf)
     lab.sync_clock()
     lo = lab.now().replace(microsecond=0) - timedelta(seconds=1)
-    log(f"{case_id} r{rep}: {case['flow']} session {session}")
-    status_code, resp, latency = lf.run(case["flow"], prompt, session, tweaks)
+    log(f"{pend['case_id']} r{pend['rep']}: {case['flow']} session {pend['session']}")
+    status_code, resp, latency = lf.run(case["flow"], prompt, pend["session"], tweaks)
     hi = lab.now().replace(microsecond=0) + timedelta(seconds=1)
-    time.sleep(POST_TRIAL_S)
-    text = _output_text(resp)
+    return {**pend, "prompt": prompt, "tweaks": tweaks, "lo": iso(lo), "hi": iso(hi), "status_code": status_code,
+            "latency_ms": latency, "text": _output_text(resp),
+            "langflow_error": resp.get("_error") or resp.get("_text") or (resp.get("detail") if status_code != 200
+                                                                          else None),
+            "hi_local": time.time()}
+
+
+def trial_finish(pend: dict, lab: Lab, lf: Langflow, ctx: dict, index: set[str], raw_dir: Path) -> dict:
+    case_id, rep, session = pend["case_id"], pend["rep"], pend["session"]
+    case = case_defs.CASES[case_id]
+    lo = datetime.fromisoformat(pend["lo"].replace("Z", "+00:00"))
+    hi = datetime.fromisoformat(pend["hi"].replace("Z", "+00:00"))
+    wait = pend["hi_local"] + POST_TRIAL_S - time.time()
+    if wait > 0:
+        time.sleep(wait)
     obs = lab.observe(iso(lo - timedelta(seconds=10)), limit=5000)
     msgs = lf.messages(case["flow"], session)
     root = next((r for r in obs["runs"] if r["session_namespace"] == f"{WS}:{case['role']}:lf-{session}"
@@ -437,25 +457,26 @@ def run_trial(case_id: str, rep: int, tag: str, lab: Lab, lf: Langflow, ctx: dic
         msgs += lf.messages("TS-20", f"a2a-{root['run_id']}")
     trace, tool_outputs = _tool_trace(msgs)
     usage, usage_reason = _usage(msgs)
-    time.sleep(SETTLE_S - POST_TRIAL_S)
+    wait = pend["hi_local"] + SETTLE_S - time.time()
+    if wait > 0:
+        time.sleep(wait)
     late = lab.observe(iso(hi), limit=500)
     tear = teardown(case_id, lab)
-    o = build_observation(case_id, case, session, lo, hi, obs, late, text, ctx, index, tool_outputs)
+    o = build_observation(case_id, case, session, lo, hi, obs, late, pend["text"], ctx, index, tool_outputs)
     checks = graders.grade(case_id, o)
     passed = all(c["passed"] is True for c in checks)
-    status = "error" if status_code != 200 else ("pass" if passed else "fail")
+    status = "error" if pend["status_code"] != 200 else ("pass" if passed else "fail")
     trial = {
-        "case_id": case_id, "repetition": rep, "status": status, "started_at": iso(lo), "ended_at": iso(hi),
-        "latency_ms": latency, "session_id": session, "flow": case["flow"],
+        "case_id": case_id, "repetition": rep, "status": status, "started_at": pend["lo"], "ended_at": pend["hi"],
+        "latency_ms": pend["latency_ms"], "session_id": session, "flow": case["flow"],
         "run_ids": [r["run_id"] for r in o["tree_runs"]][:12],
         "evidence_refs": sorted({e["event_id"] for e in o["events"]})[:40],
         "checks": checks, "usage": usage, "usage_unavailable_reason": usage_reason,
         "fault_injection": case.get("fault_injection"),
     }
-    raw = {"trial": trial, "prompt": prompt, "tweaks": tweaks, "http_status": status_code,
-           "langflow_error": resp.get("_error") or resp.get("_text") or (resp.get("detail") if status_code != 200 else None),
-           "output_text": redact(text), "langflow_tool_trace": trace, "setup": setup_log, "teardown": tear,
-           "tree_runs": o["tree_runs"],
+    raw = {"trial": trial, "prompt": pend["prompt"], "tweaks": pend["tweaks"], "http_status": pend["status_code"],
+           "langflow_error": pend["langflow_error"], "output_text": redact(pend["text"]), "langflow_tool_trace": trace,
+           "setup": pend["setup"], "teardown": tear, "tree_runs": o["tree_runs"],
            "tool_events": [{"event_id": e["event_id"], "run_id": e["run_id"], "actor": e["actor_role"],
                             "action": e["action"], "outcome": e["outcome"],
                             "tool": (e.get("details") or {}).get("tool"), "code": (e.get("details") or {}).get("code")}
@@ -463,9 +484,16 @@ def run_trial(case_id: str, rep: int, tag: str, lab: Lab, lf: Langflow, ctx: dic
            "window_counts": {k: len(v) for k, v in o["window"].items()}}
     (raw_dir / f"{case_id}-r{rep}.json").write_text(json.dumps(raw, indent=1, sort_keys=True, default=str))
     bad = [c["check_id"].split(".", 1)[1] for c in checks if c["passed"] is not True]
-    log(f"{case_id} r{rep}: {status} in {latency} ms; runs={len(o['tree_runs'])} events={len(o['events'])}"
+    log(f"{case_id} r{rep}: {status} in {pend['latency_ms']} ms; runs={len(o['tree_runs'])} events={len(o['events'])}"
         + (f"; failed: {', '.join(bad)}" if bad else ""))
     return trial
+
+
+def run_trial(case_id: str, rep: int, tag: str, lab: Lab, lf: Langflow, ctx: dict, index: set[str],
+              raw_dir: Path) -> dict:
+    pend = trial_setup(case_id, rep, tag, lab, ctx)
+    pend = trial_run(pend, lab, lf, ctx)
+    return trial_finish(pend, lab, lf, ctx, index, raw_dir)
 
 
 def reset_workspace(lab: Lab, rep: int) -> dict:
@@ -592,6 +620,107 @@ def cmd_probe(lab: Lab) -> int:
     return 1 if fails else 0
 
 
+def _save(raw_dir: Path, state: dict) -> None:
+    tmp = raw_dir / "state.json.tmp"
+    tmp.write_text(json.dumps(state, indent=1, sort_keys=True, default=str))
+    tmp.replace(raw_dir / "state.json")
+
+
+def _load(raw_dir: Path) -> dict:
+    return json.loads((raw_dir / "state.json").read_text())
+
+
+def _exit_code(state: dict) -> int:
+    rec = state.get("result") or {}
+    return 0 if rec.get("verdict") == "QUALIFIED" or state["purpose"] != "qualification" else 1
+
+
+def step(lab: Lab, lf: Langflow, raw_dir: Path, budget_s: float) -> int:
+    """Execute pending units until ``budget_s`` is used. A flow run starts only at the beginning of a call."""
+    t0 = time.monotonic()
+    state = _load(raw_dir)
+    ctx, index, n = state["ctx"], set(state["index"]), 0
+    for u in state["units"]:
+        if u["done"]:
+            continue
+        if time.monotonic() - t0 > budget_s:
+            break
+        if u["kind"] == "reset":
+            state["resets"].append(reset_workspace(lab, u["rep"]))
+            u["done"], u["reset_done_at"] = True, time.time()
+            time.sleep(SETTLE_S)
+        elif u["kind"] == "trial":
+            if u["phase"] == "setup":
+                u["pend"], u["phase"] = trial_setup(u["case"], u["rep"], state["tag"], lab, ctx), "run"
+            elif u["phase"] == "running":
+                raise SetupError(f"{u['case']} r{u['rep']}: a previous step ended during the flow run; inspect "
+                                 "the lab records and mark this trial manually (it is never re-run silently)")
+            elif u["phase"] == "run":
+                if n and budget_s < 10 ** 8:
+                    break  # start a model run only at the start of a call (sandbox command limit)
+                u["phase"] = "running"
+                _save(raw_dir, state)
+                u["pend"], u["phase"] = trial_run(u["pend"], lab, lf, ctx), "finish"
+            elif u["phase"] == "finish":
+                state["trials"].append(trial_finish(u["pend"], lab, lf, ctx, index, raw_dir))
+                u["done"] = True
+        elif u["kind"] == "submit":
+            state["result"] = submit(lab, raw_dir, state)
+            u["done"] = True
+        n += 1
+        state["ctx"] = ctx
+        _save(raw_dir, state)
+        if u["kind"] == "trial" and not u["done"] and budget_s < 10 ** 8:
+            break  # setup or flow run done: the next call starts the run / observes (sandbox command limit)
+    return n
+
+
+def submit(lab: Lab, raw_dir: Path, state: dict) -> dict:
+    manifest = json.loads((raw_dir / "system_manifest.json").read_text())
+    live = system_manifest(lab_lf()[1])
+    if sha(live) != sha(manifest):
+        log("WARNING the live Langflow/harness manifest changed during the run; the report uses the start manifest")
+    lab.sync_clock()
+    run_hi = iso(lab.now().replace(microsecond=0) + timedelta(seconds=1))
+    wall = time.time() - state["t_start"]
+    raw_files = sorted(raw_dir.glob("AE-*.json"))
+    digest = sha({p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in raw_files})
+    (raw_dir / "resets.json").write_text(json.dumps(state["resets"], indent=1))
+    body = {"harness_version": HARNESS_VERSION, "purpose": state["purpose"], "label": state["label"],
+            "repetitions": state["repeats"], "started_at": state["run_lo"], "ended_at": run_hi,
+            "system": manifest, "check_catalog": case_defs.check_catalog(), "trials": state["trials"],
+            "trajectory_digest_sha256": digest,
+            "telemetry_notes": ("usage = Langflow-stored token usage on agent messages of the trial's sessions "
+                                "(parent and delegated child flows); null + reason where absent. Latency = wall "
+                                "time of the run-API call. Wall time includes step gaps. No cost computed.")}
+    log(f"submitting report: {len(state['trials'])} trials, {len(canonical(body))} bytes")
+    rec = lab.ok("POST", "/v1/agent-evaluations", "evaluator", body, timeout=120)
+    report = lab.ok("GET", f"/v1/agent-evaluations/{rec['report_id']}", "evaluator")["report"]
+    out = REPO_ROOT / "reports" / "redacted"
+    out.mkdir(parents=True, exist_ok=True)
+    md = out / f"agent_eval_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}_{state['tag']}.md"
+    write_summary(md, rec, report, manifest, state["resets"], wall, state["ctx"], state["tag"])
+    (raw_dir / "lab_record.json").write_text(json.dumps(rec, indent=1, sort_keys=True))
+    log(f"report {rec['report_id']} verdict {rec['verdict']} critical {rec['critical_failures']} failed trials "
+        f"{rec['failed_trials']}; manifest {rec['manifest_id']}; gate {rec['gate']['status']}")
+    log(f"summary {md.relative_to(REPO_ROOT)}; raw .local/evals/{state['tag']}/ (digest {digest[:16]}…); "
+        f"wall {wall:.0f} s")
+    for reason in rec["verdict_reasons"]:
+        log(f"  reason: {reason}")
+    return {k: rec[k] for k in ("report_id", "report_sha256", "manifest_id", "manifest_sha256", "verdict",
+                                "critical_failures", "failed_trials", "verdict_reasons")} | {"summary": str(md)}
+
+
+_CLIENTS: tuple | None = None
+
+
+def lab_lf() -> tuple:
+    global _CLIENTS
+    if _CLIENTS is None:
+        _CLIENTS = clients()
+    return _CLIENTS
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--repeats", type=int, default=3)
@@ -601,13 +730,23 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--attest", action="store_true", help="attest the live Langflow/harness manifest and exit")
     ap.add_argument("--probe-isolation", action="store_true", help="developer-credential grader isolation probes")
     ap.add_argument("--label", default="rehearsal evidence")
+    ap.add_argument("--begin", action="store_true", help="plan a run and save its state; execute it with --step")
+    ap.add_argument("--step", metavar="TAG", help="execute the next units of a planned run (about 100 s per call)")
     a = ap.parse_args(argv)
     try:
-        lab, lf = clients()
+        lab, lf = lab_lf()
         if a.attest:
             return cmd_attest(lab, lf)
         if a.probe_isolation:
             return cmd_probe(lab)
+        if a.step:
+            raw_dir = REPO_ROOT / ".local" / "evals" / re.sub(r"[^0-9a-f]", "", a.step)
+            done = step(lab, lf, raw_dir, budget_s=100)
+            state = _load(raw_dir)
+            pending = [u for u in state["units"] if not u["done"]]
+            print(f"STEP done={done} pending={len(pending)}" + (f" next={pending[0].get('kind')}:"
+                  f"{pending[0].get('case', '')}:{pending[0].get('phase', '')}" if pending else " COMPLETE"))
+            return _exit_code(state) if not pending else 0
         wanted = [c.strip().upper() for c in a.cases.split(",") if c.strip()]
         unknown = [c for c in wanted if c not in case_defs.CASES]
         if unknown or not 1 <= a.repeats <= 5:
@@ -639,45 +778,26 @@ def main(argv: list[str] | None = None) -> int:
         raw_dir = REPO_ROOT / ".local" / "evals" / tag
         raw_dir.mkdir(parents=True, exist_ok=True)
         (raw_dir / "system_manifest.json").write_text(json.dumps(manifest, indent=1, sort_keys=True))
-        index = _known_ids(lab.observe(EPOCH, limit=5000))
-        t_start = time.monotonic()
         lab.sync_clock()
-        run_lo = lab.now().replace(microsecond=0) - timedelta(seconds=2)
-        trials, resets = [], []
+        units: list[dict] = []
         for rep in range(1, a.repeats + 1):
             if not a.no_reset:
-                resets.append(reset_workspace(lab, rep))
-                time.sleep(SETTLE_S)
-            for cid in order:
-                trials.append(run_trial(cid, rep, tag, lab, lf, ctx, index, raw_dir))
-        lab.sync_clock()
-        run_hi = lab.now().replace(microsecond=0) + timedelta(seconds=1)
-        wall = time.monotonic() - t_start
-        raw_files = sorted(raw_dir.glob("AE-*.json"))
-        digest = sha({p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in raw_files})
-        (raw_dir / "resets.json").write_text(json.dumps(resets, indent=1))
-        body = {"harness_version": HARNESS_VERSION, "purpose": "qualification" if full else "partial",
-                "label": a.label[:80], "repetitions": a.repeats, "started_at": iso(run_lo), "ended_at": iso(run_hi),
-                "system": manifest, "check_catalog": case_defs.check_catalog(),
-                "trials": trials, "trajectory_digest_sha256": digest,
-                "telemetry_notes": ("usage = Langflow-stored token usage on agent messages of the trial's sessions "
-                                    "(parent and delegated child flows); null + reason where absent. Latency = "
-                                    "wall time of the run-API call. No cost computed.")}
-        size = len(canonical(body))
-        log(f"submitting report: {len(trials)} trials, {size} bytes")
-        rec = lab.ok("POST", "/v1/agent-evaluations", "evaluator", body, timeout=120)
-        report = lab.ok("GET", f"/v1/agent-evaluations/{rec['report_id']}", "evaluator")["report"]
-        out = REPO_ROOT / "reports" / "redacted"
-        out.mkdir(parents=True, exist_ok=True)
-        md = out / f"agent_eval_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}_{tag}.md"
-        write_summary(md, rec, report, manifest, resets, wall, ctx, tag)
-        (raw_dir / "lab_record.json").write_text(json.dumps(rec, indent=1, sort_keys=True))
-        log(f"report {rec['report_id']} verdict {rec['verdict']} critical {rec['critical_failures']} failed trials "
-            f"{rec['failed_trials']}; manifest {rec['manifest_id']}; gate {rec['gate']['status']}")
-        log(f"summary {md.relative_to(REPO_ROOT)}; raw .local/evals/{tag}/ (digest {digest[:16]}…); wall {wall:.0f} s")
-        for reason in rec["verdict_reasons"]:
-            log(f"  reason: {reason}")
-        return 0 if rec["verdict"] == "QUALIFIED" or not full else 1
+                units.append({"kind": "reset", "rep": rep, "done": False})
+            units += [{"kind": "trial", "case": cid, "rep": rep, "phase": "setup", "done": False} for cid in order]
+        units.append({"kind": "submit", "done": False})
+        state = {"tag": tag, "purpose": "qualification" if full else "partial", "label": a.label[:80],
+                 "repeats": a.repeats, "ctx": ctx, "index": sorted(_known_ids(lab.observe(EPOCH, limit=5000))),
+                 "run_lo": iso(lab.now().replace(microsecond=0) - timedelta(seconds=2)), "t_start": time.time(),
+                 "units": units, "trials": [], "resets": [], "result": None}
+        _save(raw_dir, state)
+        log(f"run tag {tag}: {len(units)} units ({sum(u['kind'] == 'trial' for u in units)} trials)")
+        if a.begin:
+            print(f"TAG {tag}")
+            return 0
+        while not state["units"][-1]["done"]:
+            step(lab, lf, raw_dir, budget_s=10 ** 9)
+            state = _load(raw_dir)
+        return _exit_code(state)
     except SetupError as exc:
         print(f"ERROR {redact(str(exc))}", file=sys.stderr)
         return 2

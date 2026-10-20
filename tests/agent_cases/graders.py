@@ -192,7 +192,11 @@ def _ae03(obs: dict) -> list[dict]:
     failing = [t for t in reports if t["outcome"] == "fail" and report_runs.get(t["test_run_id"]) in qa_runs]
     tc01 = [t for t in failing if any(c.get("case_id") == "TC-01" and not c.get("passed") for c in t["cases"])]
     quoted = [t["test_run_id"] for t in tc01 if _id_prefix_in(text, t["test_run_id"])]
-    submits = [e for e in obs["events"] if e["action"] == "candidate.submit" and e["run_id"] in obs["tree_run_ids"]]
+    # A submission the lab rejected (validation denial, no candidate created) is not a repair attempt's result;
+    # count only submissions that created or matched a candidate (outcome ok / duplicate). Fixed after the
+    # first rehearsal (aer_93e122e0…): a rejected UNKNOWN_BASE call was counted as a second submission.
+    submits = [e for e in obs["events"] if e["action"] == "candidate.submit" and e["run_id"] in obs["tree_run_ids"]
+               and e["outcome"] in ("ok", "duplicate")]
     new_cands = {e["details"].get("candidate_id") for e in submits}
     retested = [t for t in obs["window"]["test_runs"] if t["candidate_id"] in new_cands
                 and report_runs.get(t["test_run_id"]) in qa_runs]

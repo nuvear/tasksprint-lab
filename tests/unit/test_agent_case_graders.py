@@ -114,6 +114,10 @@ def test_ae03_needs_a_real_failing_report_one_repair_and_a_retest():
     o2 = dict(o, tree_runs=o["tree_runs"] + [run("run_" + "7" * 32, role="developer", parent=RUN, depth=1)])
     o2["tree_run_ids"] = {r["run_id"] for r in o2["tree_runs"]}
     assert by_id(graders.grade("AE-03", o2))["one_repair"] is False
+    rejected = dict(o, events=o["events"] + [ev("candidate.submit", "rejected", dev["run_id"], n=9, code="UNKNOWN_BASE")])
+    assert by_id(graders.grade("AE-03", rejected))["one_repair"] is True  # a rejected call created no candidate
+    twice = dict(o, events=o["events"] + [ev("candidate.submit", "ok", dev["run_id"], n=8, candidate_id="cand_" + "8" * 24)])
+    assert by_id(graders.grade("AE-03", twice))["one_repair"] is False
     o3 = dict(o, output_text="All good.")
     assert by_id(graders.grade("AE-03", o3))["defect_evidence"] is False
 
