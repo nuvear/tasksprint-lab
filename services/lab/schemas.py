@@ -65,3 +65,13 @@ class InstructorAction(Strict):
     workspace_id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]{2,63}$")]
     # Only for load_fixture: an allowlisted, labelled instructor fixture name.
     fixture: Literal["faulty_delete", "reference_complete"] | None = None
+
+
+class KnowledgeSearch(Strict):
+    query: Annotated[str, Field(min_length=1, max_length=300)]
+
+
+class InstructorKnowledgeSearch(Strict):
+    """Instructor-only: may include archived documents to demonstrate the metadata filter."""
+    query: Annotated[str, Field(min_length=1, max_length=300)]
+    include_archived: bool = True

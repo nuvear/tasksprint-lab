@@ -24,7 +24,8 @@ PUBLIC_ROUTES = frozenset({("GET", "/healthz")})
 
 AGENT_RUNTIME_ROLES = frozenset({"coordinator", "product_owner", "developer", "qa", "operations", "application"})
 
-# (method, route template) -> roles allowed. Phase 02-03 subset of Architecture A8.
+# (method, route template) -> roles allowed. Phase 02-04 subset of Architecture A8.
+# The MCP catalog (mcp.py) derives each tool's roles from this table.
 PERMISSIONS: dict[tuple[str, str], frozenset[str]] = {
     ("POST", "/v1/runs"): AGENT_RUNTIME_ROLES,
     ("GET", "/v1/state"): frozenset({"coordinator", "product_owner", "developer", "qa", "operations"}),
@@ -41,6 +42,11 @@ PERMISSIONS: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/v1/events"): frozenset({"coordinator", "qa", "operations", "instructor", "evaluator"}),
     ("POST", "/v1/app/commands"): frozenset({"application"}),
     ("POST", "/v1/instructor/actions"): frozenset({"instructor"}),
+    # Phase 04 (A7/A8): approved retrieval and the skill catalog.
+    ("POST", "/v1/knowledge/search"): frozenset({"product_owner", "developer"}),
+    ("POST", "/v1/instructor/knowledge/search"): frozenset({"instructor"}),
+    ("GET", "/v1/skills"): frozenset({"developer", "operations"}),
+    ("GET", "/v1/skills/{name}/{version}"): frozenset({"developer", "operations"}),
 }
 
 

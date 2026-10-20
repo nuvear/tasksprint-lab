@@ -56,6 +56,13 @@ class Settings:
     runner_url: str = ""
     runner_token: str = field(default="", repr=False)
     runner_timeout_s: float = 5.0
+    # Phase 04: corpus and skill catalog locations (fixed to the repository; not
+    # environment-configurable so no deployment can point retrieval elsewhere).
+    knowledge_dir: str = str(REPO_ROOT / "knowledge")
+    skills_dir: str = str(REPO_ROOT / "skills")
+    # MCP Streamable HTTP endpoint (A8/A9).
+    mcp_tool_timeout_s: float = 20.0
+    mcp_allowed_hosts: tuple[str, ...] = ("127.0.0.1:*", "localhost:*", "[::1]:*")
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -128,6 +135,17 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
     runner_token = source.get("TS_RUNNER_TOKEN", "").strip()
     if runner_url and len(runner_token) < 32:
         raise ConfigError("TS_RUNNER_TOKEN (at least 32 characters) is required when TASKSPRINT_RUNNER_URL is set")
+    try:
+        mcp_timeout = float(source.get("TASKSPRINT_MCP_TOOL_TIMEOUT_S", "20"))
+    except ValueError as exc:
+        raise ConfigError("TASKSPRINT_MCP_TOOL_TIMEOUT_S must be a number") from exc
+    if not 0.5 <= mcp_timeout <= 120:
+        raise ConfigError("TASKSPRINT_MCP_TOOL_TIMEOUT_S must be between 0.5 and 120 seconds")
+    hosts = tuple(h.strip() for h in source.get("TASKSPRINT_MCP_ALLOWED_HOSTS", "127.0.0.1:*,localhost:*,[::1]:*")
+                  .split(",") if h.strip())
+    for h in hosts:
+        if not re.match(r"^(\[::1\]|[A-Za-z0-9.\-]+)(:(\*|\d{1,5}))?$", h):
+            raise ConfigError("TASKSPRINT_MCP_ALLOWED_HOSTS must be a comma-separated list of host[:port|:*]")
     return Settings(
         db_path=db_path,
         demo_enabled=source.get("TASKSPRINT_DEMO_ENABLED", "false").strip().lower() == "true",
@@ -138,6 +156,8 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
         journal_mode=journal,
         runner_url=runner_url,
         runner_token=runner_token,
+        mcp_tool_timeout_s=mcp_timeout,
+        mcp_allowed_hosts=hosts,
     )
 
 

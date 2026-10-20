@@ -13,6 +13,9 @@ RUN uv sync --frozen --no-dev --no-install-project && rm /usr/local/bin/uv
 COPY services/__init__.py services/__init__.py
 COPY services/lab/ services/lab/
 COPY instructor/fixtures/ instructor/fixtures/
+# Phase 04: the approved corpus and skill catalog (nothing else from the repository).
+COPY knowledge/ knowledge/
+COPY skills/ skills/
 RUN useradd --system --uid 10002 --no-create-home --shell /usr/sbin/nologin lab \
     && mkdir -p /data && chown 10002:10002 /data
 USER 10002

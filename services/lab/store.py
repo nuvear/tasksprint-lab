@@ -271,9 +271,17 @@ CREATE TABLE drills (
 {_immutable("skills")}
 """
 
+# Phase 04: SQLite FTS5 index over knowledge chunks (Architecture A7). The FTS
+# rowid equals chunks.rowid. Virtual tables cannot carry the append-only triggers;
+# only retrieval.ingest() writes here, and chunks/documents stay append-only.
+MIGRATION_0002 = """
+CREATE VIRTUAL TABLE chunks_fts USING fts5(section, chunk_text, tokenize = 'porter unicode61');
+"""
+
 # (version, name, sql). Never edit an applied migration: add a new version.
 MIGRATIONS: list[tuple[int, str, str]] = [
     (1, "initial lab schema (Phase 02)", MIGRATION_0001),
+    (2, "FTS5 knowledge chunk index (Phase 04)", MIGRATION_0002),
 ]
 
 

@@ -1,11 +1,12 @@
 [project]
 name = "tasksprint-lab"
-version = "0.3.0"
-description = "TaskSprint lab backend and bounded runner (Phase 03: runner, interpreter, protected app tests)"
+version = "0.4.0"
+description = "TaskSprint lab backend and bounded runner (Phase 04: MCP catalog, approved retrieval, skills)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.115",
     "httpx>=0.28",
+    "mcp>=1.30.0,<2.0.0",
     "pydantic>=2.9",
     "uvicorn>=0.32",
 ]
@@ -29,4 +30,5 @@ filterwarnings = [
 ]
 markers = [
     "integration: starts real local processes (lab restart; lab + separate runner process)",
+    "protocol: real MCP SDK client over Streamable HTTP against spawned lab processes",
 ]
