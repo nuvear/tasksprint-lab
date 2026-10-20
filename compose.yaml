@@ -1,0 +1,60 @@
+# Local two-service stack (Build Guide 03.4). NOT RUN on the owner VM: Docker is not installed.
+#   uv run python scripts/local_init.py            # creates .local/{role_tokens,lab,runner}.env
+#   docker compose up --build -d
+#   uv run python scripts/check_stack.py --target local
+# Only the lab is published, and only on 127.0.0.1. The runner sits on an internal
+# network with no published port, no volume, a read-only filesystem and only its
+# transport token. Railway (Phase 05) keeps it on private networking.
+name: tasksprint-local
+
+services:
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    env_file:
+      - .local/runner.env
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - "no-new-privileges:true"
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 0.5
+    networks: [runner-net]
+    restart: unless-stopped
+
+  lab:
+    build:
+      context: .
+      dockerfile: Dockerfile.lab
+    env_file:
+      - .local/lab.env
+    environment:
+      TASKSPRINT_DB_PATH: /data/tasksprint.sqlite3
+      TASKSPRINT_RUNNER_URL: http://runner:8001
+      TASKSPRINT_FIXTURES_DIR: /app/instructor/fixtures
+    volumes:
+      - lab-data:/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - "no-new-privileges:true"
+    networks: [default, runner-net]
+    depends_on:
+      runner:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  runner-net:
+    internal: true
+
+volumes:
+  lab-data: {}

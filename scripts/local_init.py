@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Create NEW local TaskSprint credentials in ignored, owner-only files.
 
-Writes two files (default directory: .local/ in the repository root):
+Writes three files (default directory: .local/ in the repository root):
 
   role_tokens.env  plaintext role tokens, for the owner to enter privately into
                    Langflow Credential variables / human-only clients.
   lab.env          lab-service configuration: token SHA-256 hashes, the runner
                    transport token, and local paths. Pass it to the lab with
                    TASKSPRINT_ENV_FILE=.local/lab.env.
+  runner.env       ONLY the runner transport token (Phase 03), for the separate
+                   runner process / container. Nothing else belongs there.
+
+``--derive-runner-env`` creates runner.env from an existing lab.env (for set-ups
+made before Phase 03) without touching the other files or printing values.
 
 Guarantees: values are never printed (only file names and variable names);
 files are created with mode 0600 inside a 0700 directory; existing files are
@@ -44,6 +49,7 @@ ROLE_TOKENS = (
 RUNNER_TOKEN_VAR = "TS_RUNNER_TOKEN"
 TOKEN_FILE = "role_tokens.env"
 LAB_FILE = "lab.env"
+RUNNER_FILE = "runner.env"
 
 
 def new_token(role: str) -> str:
@@ -59,6 +65,34 @@ def write_private(path: Path, content: str) -> None:
     os.chmod(path, 0o600)
 
 
+def runner_env_text(runner_token: str) -> str:
+    return ("# TaskSprint runner configuration. PRIVATE; ignored by git. Transport token ONLY:\n"
+            "# never add role tokens, hashes, database paths or model/platform keys here.\n"
+            f"{RUNNER_TOKEN_VAR}={runner_token}\n")
+
+
+def derive_runner_env(lab_path: Path, runner_path: Path, dry_run: bool) -> int:
+    if runner_path.exists():
+        print(f"REFUSED: {runner_path.name} already exists in {runner_path.parent}; nothing was changed.", file=sys.stderr)
+        return 3
+    if not lab_path.is_file():
+        print(f"ERROR: {lab_path} not found; run local_init.py without --derive-runner-env first.", file=sys.stderr)
+        return 2
+    token = ""
+    for raw in lab_path.read_text(encoding="utf-8").splitlines():
+        if raw.strip().startswith(RUNNER_TOKEN_VAR + "="):
+            token = raw.split("=", 1)[1].strip()
+    if len(token) < 32:
+        print(f"ERROR: {lab_path.name} has no usable {RUNNER_TOKEN_VAR}.", file=sys.stderr)
+        return 2
+    if dry_run:
+        print(f"DRY RUN: would create {runner_path} (mode 0600) with {RUNNER_TOKEN_VAR} only.")
+        return 0
+    write_private(runner_path, runner_env_text(token))
+    print(f"Created {runner_path} (mode 0600): {RUNNER_TOKEN_VAR} only (copied from {lab_path.name}; value not printed)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dir", default=str(REPO_ROOT / ".local"),
@@ -69,11 +103,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workspaces", default="demo-001",
                         help="comma-separated designated demo workspaces (default: demo-001)")
     parser.add_argument("--dry-run", action="store_true", help="show what would be created; write nothing")
+    parser.add_argument("--derive-runner-env", action="store_true",
+                        help="only create runner.env from an existing lab.env (no other change)")
     args = parser.parse_args(argv)
 
     target = Path(args.dir).resolve()
-    token_path, lab_path = target / TOKEN_FILE, target / LAB_FILE
-    existing = [p.name for p in (token_path, lab_path) if p.exists()]
+    token_path, lab_path, runner_path = target / TOKEN_FILE, target / LAB_FILE, target / RUNNER_FILE
+    if args.derive_runner_env:
+        return derive_runner_env(lab_path, runner_path, args.dry_run)
+    existing = [p.name for p in (token_path, lab_path, runner_path) if p.exists()]
     if existing:
         print(f"REFUSED: {', '.join(existing)} already exist in {target}; nothing was changed.", file=sys.stderr)
         print("Existing credentials are never overwritten. Move them aside deliberately if you intend to rotate.",
@@ -114,6 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     lab_lines += [f"{hvar}={hashlib.sha256(tokens[var].encode()).hexdigest()}" for var, hvar, _ in ROLE_TOKENS]
 
     write_private(token_path, "\n".join(token_lines) + "\n")
+    write_private(runner_path, runner_env_text(runner_token))
     try:
         write_private(lab_path, "\n".join(lab_lines) + "\n")
     except FileExistsError:
@@ -121,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return 1
 
-    for p in (token_path, lab_path):
+    for p in (token_path, lab_path, runner_path):
         mode = stat.S_IMODE(p.stat().st_mode)
         if mode & 0o077:
             print(f"WARNING: {p.name} has mode {oct(mode)}; expected 0600 (filesystem may not honour chmod).",
@@ -129,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Created {token_path} (mode 0600): " + ", ".join(v for v, _, _ in ROLE_TOKENS))
     print(f"Created {lab_path} (mode 0600): TASKSPRINT_DB_PATH, TASKSPRINT_DEMO_ENABLED, "
           f"TASKSPRINT_ALLOWED_WORKSPACES, {RUNNER_TOKEN_VAR}, " + ", ".join(h for _, h, _ in ROLE_TOKENS))
+    print(f"Created {runner_path} (mode 0600): {RUNNER_TOKEN_VAR} only")
     print("No secret values were printed. Not generated here: TS_A2A_API_KEY (issued by Langflow in Phase 08).")
     return 0
 
