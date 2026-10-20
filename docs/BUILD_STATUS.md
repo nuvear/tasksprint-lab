@@ -1,13 +1,19 @@
 # Build status
 
-**Last updated:** 20 October 2026, about 14:30 UTC (Phase 09 executed).
-**Current gate:** **GATE 09 PASS** (`docs/PHASE09_REPORT.md`) on branch `feature/phase-09-approval` (not
-pushed; lab redeployed by the orchestrator from `main` = `a618e1e`, lab 0.6.0, migration 0004). Human-only
-TS-90 Instructor Console (no Agent) pauses at native Human Input and records Approve/Reject against the
-exact plan + snapshot hash; A11 transactional execution is live for Operations; every live deploy is
-refused at step 5 (`AGENT_MANIFEST_NOT_QUALIFIED`) until Phase 10. Successful execution, replay,
-expiry, stale revision, environment mismatch, stop, reset and rollback are isolated test evidence.
-Plan contract 1.1 and the Operations prompt line are owner-approved. GATE 08: `docs/PHASE08_REPORT.md`.
+**Last updated:** 20 October 2026, about 16:10 UTC (Phase 10 executed).
+**Current gate:** **GATE 10 PASS** (`docs/PHASE10_REPORT.md`) on branch `feature/phase-10-evals` (not pushed;
+lab redeployed by the orchestrator from `main` = `303f109`, lab 0.7.0, migration 0005). Independent harness
+`scripts/run_agent_evals.py` + protected case set `tests/agent_cases/` (tasksprint-agent-cases/1). Qualification
+report **`aer_3b3fd570e08507bd4a915323` QUALIFIED** (24/24 trials pass, 0 critical, rehearsal evidence) for manifest
+**`asm_a8c6a59cd5b0b619cca37440`** (sha256 `a8c6a59c…1f1a16`); readiness for `cand_29a221e0…` = deploy **READY**
+(no plan created). Release-plan schema 1.2 (deploy binds the qualified manifest); handoff stays 1.1. Four earlier
+attempts (grader/harness defects and one 60 s transport disconnect) are stored NOT_QUALIFIED and disclosed.
+The manifest verification expires after 24 h: run `run_agent_evals.py --attest` before Phase 11 deploys.
+GATE 09: `docs/PHASE09_REPORT.md`.
+**Live-instance changes in Phase 10:** none to flows, globals, MCP servers or keys (attested identical after the
+run). Lab `demo-001`: nine instructor resets (generation 1 → 10), six agent-evaluation reports, two attestations,
+AE-05 outage drills (disabled), and per-trial runs/events/candidates/test runs/A2A exchanges. Langflow: `ae-*`
+sessions in TS-01/03/10/20.
 **Live-instance changes in Phase 09:** Credential globals `TS_APPROVER_TOKEN`, `TS_INSTRUCTOR_TOKEN`,
 `TS_EVALUATOR_TOKEN`; new flow `TS-90 Instructor Console` `cda48ae0-d8bb-44bc-a422-91f9576fba43`
 (`mcp_enabled=false`, `a2a_enabled=false`); TS-20 Agent instructions updated in place (A2A still Live).
@@ -236,7 +242,7 @@ Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
 | Railway services | DEPLOYED, GATE 05 PASSED | 05 |
 | Live MCP / A2A / HITL protocol tests | MCP: TESTED through Langflow (native client Phase 06, SDK in the bounded toolset Phase 07); A2A/HITL NOT RUN | 04–09 |
 | Validated flow exports | TS-01/02/03/10/30 exported; same-instance dry-run keep ×5; fresh instance NOT RUN | 06, 07, 11 |
-| Application / security / agent evaluations | NOT RUN | 03–11 |
+| Application / security / agent evaluations | App/security: TESTED (Phases 03–09); agent evaluations QUALIFIED as rehearsal evidence (`aer_3b3fd570…`, Phase 10); full scenario NOT RUN | 03–11 |
 | Two-hour rehearsal | NOT RUN | 12 |
 
 ## Stop conditions carried forward
@@ -298,3 +304,16 @@ Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
 | Exports | DONE | `flows/90_instructor.json` (sha256 `d2255d88…`), `flows/20_operations.json` (`cf1c713b…`); `import_flows.py --dry-run` keep ×7 |
 | Deploy success / live receipt | BLOCKED until Phase 10 | no agent-system manifest can qualify (fail closed) |
 
+
+## Phase 10 results (20 Oct 2026, 14:35–16:10 UTC)
+
+| Item | Status | Evidence |
+|---|---|---|
+| Lab 0.7.0 (evaluator report + verdict, manifest gate, attestations, observations, outages, plan schema 1.2, expired-run sweep) | TESTED + DEPLOYED | `628 passed in 26.14s`; deployed lab side `d48dd41e…` = local |
+| Grader isolation | PASS | `--probe-isolation` all PASS; `tests/security/test_grader_isolation.py` |
+| Agent evaluation AE-01 … AE-08, 3 repetitions | **QUALIFIED** (rehearsal evidence) | `aer_3b3fd570…`: every case 3/3, 0 critical, latency and tokens per trial in PHASE10_REPORT §3 |
+| Earlier attempts | NOT_QUALIFIED (disclosed) | `aer_93e122e0…` (grader), `aer_c077cfda…` (harness timing/index, server slice caught it), `aer_ad015e1f…` (60 s disconnect, 1 error), smokes `aer_03b59db8…`, `aer_c1d0dae4…` |
+| Readiness with the qualified manifest | PASS (READY, no plan) | `evt_bf36b024…`; attestations `att_7781d090…`, `att_cbbdea3e…` match |
+| Class cases | PREPARED | `docs/CLASS_CASES.md` (AE-04, AE-07, AE-08) |
+| TS-90 evaluation launcher | NOT BUILT (accepted) | instructor-run harness instead |
+| Cost | ESTIMATE only | ≈ USD 1.84 qualification run, ≈ USD 4.51 all 67 trials (Langflow catalog price table, unverified) |
