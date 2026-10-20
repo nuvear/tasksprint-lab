@@ -62,7 +62,7 @@ TOKEN_VARS = {"coordinator": "TS_COORD_TOKEN", "operations": "TS_OPS_TOKEN", "de
               "product_owner": "TS_PO_TOKEN"}
 SETTLE_S = 7          # > the lab's 5 s trial-window grace: setup/teardown actions stay outside every window
 POST_TRIAL_S = 4      # let late events land before observing
-RUN_TIMEOUT_S = 165   # one flow run; above the 90/180 s agent deadlines, below the owner sandbox's 180 s limit
+RUN_TIMEOUT_S = 165   # one flow run (streamed; read timeout between chunks); above the 90/180 s agent deadlines, below the owner sandbox's 180 s limit
 EPOCH = "2000-01-01T00:00:00Z"
 # Wall-clock time of the last protected (instructor) action: reset, fixture, outage on/off. A flow run starts
 # only SETTLE_S after it, so no setup/teardown can fall inside a trial window (the lab would count it as a
@@ -141,9 +141,10 @@ class Lab:
 
 
 class Langflow:
-    def __init__(self, base: str, key: str):
+    def __init__(self, base: str, key: str, transport: httpx.BaseTransport | None = None):
         self.base = base.rstrip("/")
-        self.c = httpx.Client(base_url=self.base, headers={"x-api-key": key}, timeout=httpx.Timeout(60, connect=15))
+        self.c = httpx.Client(base_url=self.base, headers={"x-api-key": key}, timeout=httpx.Timeout(60, connect=15),
+                              transport=transport)
 
     def get(self, path: str, **params) -> Any:
         r = self.c.get(path, params=params or None)
@@ -159,15 +160,49 @@ class Langflow:
             body["tweaks"] = tweaks
         t0 = time.monotonic()
         try:
-            r = self.c.post(f"/api/v1/run/{FLOWS[flow]}", params={"stream": "false"}, json=body,
-                            timeout=httpx.Timeout(RUN_TIMEOUT_S, connect=15))
-            ms = int((time.monotonic() - t0) * 1000)
-            try:
-                return r.status_code, r.json(), ms
-            except ValueError:
-                return r.status_code, {"_text": redact(r.text[:500])}, ms
+            return self._run_streamed(flow, body, t0)
         except httpx.HTTPError as exc:
             return 0, {"_error": f"{type(exc).__name__}: {redact(str(exc))[:200]}"}, int((time.monotonic() - t0) * 1000)
+
+    def _run_streamed(self, flow: str, body: dict, t0: float) -> tuple[int, dict, int]:
+        """Streaming run (``?stream=true``): Langflow sends ``{"event", "data"}`` JSON objects separated by blank
+        lines while the flow runs (messages, tool steps) and the same RunResponse as the non-streaming call in
+        the final ``end`` event. Adopted after rehearsal c22095, where a silent non-streaming call of a long
+        Sprint Room turn was disconnected at 60.0 s. The final result, not the stream, is graded."""
+        events, result, error, buf = 0, None, None, ""
+        with self.c.stream("POST", f"/api/v1/run/{FLOWS[flow]}", params={"stream": "true"}, json=body,
+                           timeout=httpx.Timeout(RUN_TIMEOUT_S, connect=15)) as r:
+            if r.status_code != 200:
+                r.read()
+                try:
+                    return r.status_code, r.json(), int((time.monotonic() - t0) * 1000)
+                except ValueError:
+                    return r.status_code, {"_text": redact(r.text[:500])}, int((time.monotonic() - t0) * 1000)
+            for chunk in r.iter_text():
+                buf += chunk
+                while "\n\n" in buf:
+                    raw, buf = buf.split("\n\n", 1)
+                    ev = parse_stream_event(raw)
+                    if ev is None:
+                        continue
+                    events += 1
+                    if ev.get("event") == "end":
+                        result = (ev.get("data") or {}).get("result")
+                    elif ev.get("event") == "error":
+                        error = redact(str((ev.get("data") or {}).get("error")))[:300]
+            ev = parse_stream_event(buf)
+            if ev is not None:
+                events += 1
+                if ev.get("event") == "end":
+                    result = (ev.get("data") or {}).get("result")
+                elif ev.get("event") == "error":
+                    error = redact(str((ev.get("data") or {}).get("error")))[:300]
+        ms = int((time.monotonic() - t0) * 1000)
+        if error is not None:
+            return 0, {"_error": f"flow error event: {error}", "_stream_events": events}, ms
+        if not isinstance(result, dict):
+            return 0, {"_error": "stream ended without an end event", "_stream_events": events}, ms
+        return 200, {**result, "_stream_events": events}, ms
 
     def messages(self, flow: str, session: str) -> list[dict]:
         try:
@@ -177,6 +212,19 @@ class Langflow:
 
 
 # ------------------------------------------------------------------ live system manifest (Langflow / harness side)
+def parse_stream_event(raw: str) -> dict | None:
+    raw = (raw or "").strip()
+    if raw.startswith("data:"):
+        raw = raw[5:].strip()
+    if not raw:
+        return None
+    try:
+        ev = json.loads(raw)
+    except ValueError:
+        return None
+    return ev if isinstance(ev, dict) else None
+
+
 def _model(tpl: dict) -> dict:
     v = (tpl.get("model") or {}).get("value")
     first = v[0] if isinstance(v, list) and v and isinstance(v[0], dict) else {}
@@ -460,7 +508,7 @@ def trial_run(pend: dict, lab: Lab, lf: Langflow, ctx: dict) -> dict:
             "latency_ms": latency, "text": _output_text(resp),
             "langflow_error": resp.get("_error") or resp.get("_text") or (resp.get("detail") if status_code != 200
                                                                           else None),
-            "hi_local": time.time()}
+            "stream_events": resp.get("_stream_events"), "hi_local": time.time()}
 
 
 def trial_finish(pend: dict, lab: Lab, lf: Langflow, ctx: dict, index: set[str], raw_dir: Path) -> dict:
@@ -501,7 +549,7 @@ def trial_finish(pend: dict, lab: Lab, lf: Langflow, ctx: dict, index: set[str],
         "fault_injection": case.get("fault_injection"),
     }
     raw = {"trial": trial, "prompt": pend["prompt"], "tweaks": pend["tweaks"], "http_status": pend["status_code"],
-           "langflow_error": pend["langflow_error"], "output_text": redact(pend["text"]), "langflow_tool_trace": trace,
+           "langflow_error": pend["langflow_error"], "stream_events": pend.get("stream_events"), "output_text": redact(pend["text"]), "langflow_tool_trace": trace,
            "setup": pend["setup"], "teardown": tear, "tree_runs": o["tree_runs"],
            "tool_events": [{"event_id": e["event_id"], "run_id": e["run_id"], "actor": e["actor_role"],
                             "action": e["action"], "outcome": e["outcome"],
