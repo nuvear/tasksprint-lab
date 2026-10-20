@@ -1,9 +1,12 @@
 # Build status
 
-**Last updated:** 20 October 2026 (Phase 00, read-only preflight).
-**Current gate:** GATE 00 reached. Phase 01 not started.
-**Live-instance changes made in Phase 00:** none. No flows, keys, variables,
+**Last updated:** 20 October 2026, 04:30 UTC (Phase 02, local build).
+**Current gate:** GATE 02 evidence produced locally; awaiting owner review.
+Phase 01 (model connection, component templates) is not recorded as complete in
+this file; Phase 02 is local-only and does not depend on it.
+**Live-instance changes made in Phases 00 and 02:** none. No flows, keys, variables,
 providers, MCP servers, Railway variables or deployments were created or changed.
+Phase 02 did not touch Langflow, Railway or `nuvear/langflow-railway`.
 
 ## Labels
 
@@ -43,12 +46,56 @@ integration PASS. Nothing in this file is a protocol-execution result.
 | Local toolchain (owner VM, aarch64) | OBSERVED | Python 3.10.12, git 2.34.1, uv 0.12.13 |
 | Docker / local Compose | **BLOCKED** | `docker` not installed on the owner VM; local two-service Compose tests cannot run there |
 
+## Phase 02 results (20 Oct 2026, owner VM, local only)
+
+Repository: `TaskSprint-Langflow/tasksprint-lab/` (separate from the kit and from
+`nuvear/langflow-railway`). Branches: `main` (kit import) and `feature/phase-02-lab`.
+No remote configured; nothing pushed or deployed. Full detail: `docs/PHASE02_REPORT.md`.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Python 3.12 toolchain | TESTED | uv-managed CPython 3.12.14 (aarch64); `uv sync --frozen` exit 0 |
+| Locked dependencies | TESTED | `uv.lock` committed: fastapi 0.150.0, pydantic 2.14.1, starlette 1.9.0, httpx 0.28.1, uvicorn 0.54.0, pytest 9.1.1 |
+| SQLite FTS5 (for Phase 04 retrieval) | TESTED: available | SQLite 3.53.1 in that Python; `CREATE VIRTUAL TABLE ... USING fts5` and a `MATCH`/`bm25()` query succeeded |
+| Migrations with explicit versions | TESTED | Migration 1 (A5 tables, checksum-verified, append-only triggers); idempotent re-run and drift refusal tests pass |
+| Role auth (hashes, constant time, deny by default) | TESTED (unit/security) | Every business route has an explicit policy; missing/invalid tokens 401 and wrong roles 403 on every route with DB unchanged |
+| Role-field escalation | TESTED (unit/security) | `role`, `approved`, `is_admin`, `acting_as` fields rejected (422); role headers ignored |
+| Workspace isolation | TESTED (unit/security) | Tasks, candidates, stories, memory, events, runs bound to workspace; body cannot pick workspace |
+| Optimistic concurrency | TESTED (unit) | Stale revision -> 409 REVISION_CONFLICT, no change; 6 simultaneous writers -> exactly one succeeds |
+| Sprint stage machine | TESTED (unit) | Legal transitions only; scope confirmation, candidate, trusted test-run evidence, one-repair and human-review preconditions |
+| Preference memory | TESTED (unit) | Allowlisted enumerated keys only, owner+workspace scope, expiry; inspected separately from state |
+| Immutable candidates | TESTED (unit) | SHA-256 IDs, provenance fixed by server, UPDATE/DELETE aborted by triggers, tamper fails closed, reference source never model-readable |
+| Starter v0 seed (`demo-001`) | TESTED | Seeded into `.local/tasksprint.sqlite3`: starter `cand_561149e5c98bb5b7e8ab7357`, sha256 `561149e5…fac1e9b` (matches kit SHA256SUMS), tasks T001/T002, release revision 0 |
+| `complete` on v0 | TESTED | Returns FEATURE_UNAVAILABLE, zero task changes. Derived from the registered starter-baseline contract; no candidate source executed (runner is Phase 03) |
+| add/list persistence | TESTED | Close/reopen unit test; separate real two-process uvicorn restart (integration test and manual check) preserved T001-T003 |
+| `local_init.py` | TESTED | New tokens for 9 roles + runner transport token written to `.local/` (0600, dir 0700); names only printed; second run refused (exit 3) |
+| Gate command `uv run pytest -q tests/unit tests/security` | TESTED: **112 passed** | 68 unit + 44 security, 2.47 s, run inside the repository folder |
+| Integration `uv run pytest -q -m integration tests/integration` | TESTED: **1 passed** | Real process restart (not part of the gate command) |
+| No exec/eval of candidate source | TESTED (static scan) | No `exec`/`eval`/`compile`/`importlib`/`pickle`/`subprocess` in `services/` |
+| Docker / Compose | BLOCKED (unchanged) | Docker not installed on the owner VM |
+
+Environment notes recorded during Phase 02 (owner VM only):
+
+- The mounted folder forbids file deletion. SQLite therefore runs with
+  `journal_mode=TRUNCATE` (DELETE and WAL modes failed with disk I/O errors there).
+- Git cannot run inside the mounted folder (it must unlink lock/temp files). The
+  repository was committed on the VM's local disk and copied into the folder,
+  including `.git`. Git on the owner's Mac works normally.
+- The VM's session disk was full; uv's Python, cache and the virtual environment
+  were placed under `/tmp` via `UV_PYTHON_INSTALL_DIR`, `UV_CACHE_DIR`,
+  `UV_PROJECT_ENVIRONMENT`, and pytest used `TMPDIR=/tmp/ts/tmp`.
+- `.local/fsprobe/` holds disposable filesystem-probe files from this phase
+  (ignored by git); the owner may delete it.
+
 ## Future phases
 
 | Item | Status | Phase |
 |---|---|---|
 | Model connection (TS-00) and sanitized component templates | NOT RUN | 01 |
-| Backend and isolated runner | NOT BUILT | 02–05 |
+| Lab backend Phase 02 subset | BUILT LOCALLY, TESTED | 02 (see above) |
+| Isolated runner, protected app tests | NOT BUILT | 03 |
+| MCP, retrieval, skills | NOT BUILT | 04 |
+| Railway services | NOT BUILT | 05 |
 | Live MCP / A2A / HITL protocol tests | NOT RUN | 04–09 |
 | Validated flow exports | NOT BUILT | 01 onward |
 | Application / security / agent evaluations | NOT RUN | 03–11 |
@@ -63,3 +110,5 @@ integration PASS. Nothing in this file is a protocol-execution result.
   not substitute Run Flow or an agent-set approval flag.
 - Docker must be installed (or another approved runner chosen) before Compose steps.
 - Never convert OWNER-REPORTED or presence observations into integration PASS.
+- Phase 02 unit/security results are local backend behaviour only; they are not MCP,
+  A2A, Langflow or deployment results.
