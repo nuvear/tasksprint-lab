@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
 
     import warnings
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
+        warnings.simplefilter("ignore")  # third-party testclient deprecation notice only
         from fastapi.testclient import TestClient
 
     from services.lab.config import ConfigError, load_settings, parse_env_file
