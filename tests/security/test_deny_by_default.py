@@ -17,6 +17,7 @@ SAMPLE_BODIES = {
     "/v1/memory": {"key": "summary_length", "value": "short"},
     "/v1/candidates": {"source": "def complete(tasks, task_id):\n    return 1\n"},
     "/v1/app/commands": {"command": "add Sneaky task"},
+    "/v1/test-runs": {"candidate_id": "cand_" + "0" * 24},
     "/v1/instructor/actions": {"action": "seed", "workspace_id": "demo-002"},
 }
 
@@ -31,7 +32,7 @@ def business_routes(app):
 
 
 def concrete(path):
-    return path.replace("{candidate_id}", "cand_" + "0" * 24)
+    return path.replace("{candidate_id}", "cand_" + "0" * 24).replace("{test_run_id}", "tr_" + "0" * 24)
 
 
 def snapshot(db):
