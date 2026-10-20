@@ -1,12 +1,13 @@
 # Build status
 
-**Last updated:** 20 October 2026, 04:30 UTC (Phase 02, local build).
-**Current gate:** GATE 02 evidence produced locally; awaiting owner review.
+**Last updated:** 20 October 2026, about 05:00 UTC (Phase 03, local build).
+**Current gate:** GATE 03 evidence produced locally (Compose step BLOCKED: no Docker);
+awaiting owner review. GATE 02 was produced earlier the same day.
 Phase 01 (model connection, component templates) is not recorded as complete in
 this file; Phase 02 is local-only and does not depend on it.
 **Live-instance changes made in Phases 00 and 02:** none. No flows, keys, variables,
 providers, MCP servers, Railway variables or deployments were created or changed.
-Phase 02 did not touch Langflow, Railway or `nuvear/langflow-railway`.
+Phases 02 and 03 did not touch Langflow, Railway or `nuvear/langflow-railway`.
 
 ## Labels
 
@@ -87,13 +88,39 @@ Environment notes recorded during Phase 02 (owner VM only):
 - `.local/fsprobe/` holds disposable filesystem-probe files from this phase
   (ignored by git); the owner may delete it.
 
+## Phase 03 results (20 Oct 2026, owner VM, local only)
+
+Branch `feature/phase-03-runner` (from `feature/phase-02-lab` cef6f52). Full detail:
+`docs/PHASE03_REPORT.md`. The owner's `.local/` files and demo database were not used
+or changed; manual checks used temporary credentials and a temporary database.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Git inside the mounted folder | TESTED: works | Deletion now permitted; branch, commits and `git status` ran in place |
+| Separate runner service (`services/runner/`) | BUILT LOCALLY, TESTED | `/healthz`, `POST /v1/evaluate` with transport-only bearer; 401 without it (unit, security, integration) |
+| AST allowlist validator | TESTED (unit/security) | 27 allowed node classes, asserted exactly; 80-row reject matrix; 27 escape attempts over HTTP rejected with zero ops |
+| Tree-walking interpreter and limits | TESTED (unit/security) | 4 KiB / 256 nodes / depth 20 / 100 tasks / 32 KiB input / title 120 / 5,000 ops / 2 s / bounded output (cycles, aliasing) |
+| Three fixtures' actual behaviour | TESTED | v0 -> FEATURE_UNAVAILABLE, unchanged; faulty -> drops target (and COMPLETED for unknown ID); reference -> completed=true, retains others, TASK_NOT_FOUND |
+| v0 `complete` interpreted (Phase 02 shortcut removed) | TESTED | Response carries runner version, ops (8), interpreted hash = active hash |
+| Permitted-change commit + snapshot revision check | TESTED (unit) | Only target completed false->true; faulty/tampered results refused; concurrent task or release change -> 409, other write preserved |
+| Protected suite TC-01..TC-06 | TESTED | Reference pass (27/27 assertions); faulty fail (TC-01..TC-04, TC-02 retention); v0 fail (does not satisfy story) |
+| Immutable reports | TESTED (unit) | `test_runs` append-only; suite hash `051dfb58…a9551` = SHA-256 of `services/lab/testing.py`; runner version; evidence IDs; `error` (never pass) when runner down |
+| Test-run routes | TESTED | `POST /v1/test-runs` qa only; `GET /v1/test-runs/{id}` qa, operations, coordinator; extra fields 422 |
+| Provenance, base diffs, Developer read rules | TESTED (unit) | Re-hash + origin/author consistency on every load; difflib base diff; reference never a base or readable by developer |
+| Runner holds no DB path, role tokens or secrets | TESTED (process level) | Live runner process env = `LANG, PATH, TS_RUNNER_TOKEN`; no DB file open; refuses to start with `TASKSPRINT_DB_PATH` etc.; refuses root |
+| Two-service separation | TESTED as two local processes | Separate PIDs/ports/env (integration). Not container isolation: no network isolation, read-only FS or separate user on the VM |
+| `scripts/check_stack.py --target local` | TESTED against local processes only | 5 PASS with an unused runner probe; FAIL correctly reported when probed at the live runner port |
+| `Dockerfile.lab`, `Dockerfile.runner`, `compose.yaml` | WRITTEN, NOT BUILT | Static checks only (runner image copies only runner code, numeric non-root user; runner service has no ports/volumes/lab env) |
+| `docker compose up --build -d` | **BLOCKED** | Docker not installed on the owner VM |
+| Gate command `uv run pytest -q tests/unit tests/security tests/integration` | TESTED: **345 passed** | 245 unit + 90 security + 10 integration, 5.90 s, 0 failed, 0 skipped |
+
 ## Future phases
 
 | Item | Status | Phase |
 |---|---|---|
 | Model connection (TS-00) and sanitized component templates | NOT RUN | 01 |
 | Lab backend Phase 02 subset | BUILT LOCALLY, TESTED | 02 (see above) |
-| Isolated runner, protected app tests | NOT BUILT | 03 |
+| Isolated runner, protected app tests | BUILT LOCALLY, TESTED; Compose BLOCKED | 03 (see above) |
 | MCP, retrieval, skills | NOT BUILT | 04 |
 | Railway services | NOT BUILT | 05 |
 | Live MCP / A2A / HITL protocol tests | NOT RUN | 04–09 |
@@ -109,6 +136,10 @@ Environment notes recorded during Phase 02 (owner VM only):
 - If Human Input or A2A Agent components are absent in Phase 01, stop and report; do
   not substitute Run Flow or an agent-set approval flag.
 - Docker must be installed (or another approved runner chosen) before Compose steps.
+  Phase 03 separation is proven only between local processes; container isolation
+  (internal network, read-only FS, non-root user) is unverified until Compose runs.
+- The owner's `.local/` has no `runner.env` yet; create it with
+  `scripts/local_init.py --derive-runner-env` before starting the runner or Compose.
 - Never convert OWNER-REPORTED or presence observations into integration PASS.
 - Phase 02 unit/security results are local backend behaviour only; they are not MCP,
   A2A, Langflow or deployment results.

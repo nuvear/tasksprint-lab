@@ -1,7 +1,7 @@
 [project]
 name = "tasksprint-lab"
-version = "0.2.0"
-description = "TaskSprint lab backend (Phase 02: persistent state, roles, starter to-do app)"
+version = "0.3.0"
+description = "TaskSprint lab backend and bounded runner (Phase 03: runner, interpreter, protected app tests)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.115",
@@ -28,5 +28,5 @@ filterwarnings = [
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",
 ]
 markers = [
-    "integration: starts real local processes (not part of the Phase 02 unit/security gate)",
+    "integration: starts real local processes (lab restart; lab + separate runner process)",
 ]
