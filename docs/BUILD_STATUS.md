@@ -1,14 +1,20 @@
 # Build status
 
-**Last updated:** 20 October 2026, about 12:50 UTC (Phase 07 executed).
-**Current gate:** **GATE 07 evidence produced** (`docs/PHASE07_REPORT.md`) on branch
-`feature/phase-07-sprint-room` (not pushed). Owner decisions applied: bounded toolset (Phase 06
-deviation 1, option a) and the documented `COMPLETED` contract (brief 1.1, skill 1.2.0 — **served
-only after the lab is redeployed**). Open: lab re-check before commit (finding 4), Developer without
-confirmed scope (finding 7). GATE 06 evidence `docs/PHASE06_REPORT.md`; GATE 05 PASSED.
+**Last updated:** 20 October 2026, about 13:35 UTC (Phase 08 executed up to the redeploy stop point).
+**Current gate:** **GATE 08 not yet** — Phase 08 is **stopped: redeploy needed before live A2A
+assessment** (`docs/PHASE08_REPORT.md`). Branch `feature/phase-08-a2a` (not pushed). Done: A2A enabled
+proof, lab 0.5.0 code (readiness, canonical plans, audited A2A exchanges, commit-time run re-check;
+496 tests pass), TS-20 built and published (card `protocolVersion` 0.3.0), runtime key
+`TS_A2A_API_KEY`, unauthorized execution denied (401) / authorized accepted, Sprint Room A2A peer
+wired. Pending after the lab redeploy: live checks 08.6. GATE 07 evidence `docs/PHASE07_REPORT.md`.
+**Live-instance changes in Phase 08:** new flow `TS-20 Production Manager`
+`489890aa-4bd0-4641-b669-070f10e0922b` (`flow_type=agent`, `a2a_enabled=true`, published in the
+Agent pane); TS-10 updated in place (Bounded Toolset 1.1.0 + TaskSprint A2A Audit node); API key
+`tasksprint-a2a-runtime` (`450683a7-…`, expires 2027-01-18) and Credential global `TS_A2A_API_KEY`.
+The orchestrator set `LANGFLOW_A2A_ENABLED=true` and redeployed Langflow before the phase; no other
+Railway change.
 **Live-instance changes in Phase 07:** TS-01/02/03 rewired (MCP Tools → TaskSprint Bounded Toolset,
 Run Context 1.1.0; ids kept); new flow `TS-10 Sprint Room` `ec5b5dba-d7d2-4aeb-899c-016a3f66b4eb`.
-No globals, MCP servers, Railway, A2A or TS-20/TS-90 changes.
 **Live-instance changes in Phase 06:** project `TaskSprint`; flows TS-30, TS-01, TS-02, TS-03;
 7 globals (`TASKSPRINT_API_BASE`, six role tokens); 6 MCP servers; Langflow auto-created 6
 `MCP_*` Credential globals and the project MCP server `lf-tasksprint`. Railway untouched.
@@ -255,3 +261,17 @@ Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
 - Never convert OWNER-REPORTED or presence observations into integration PASS.
 - Phase 02 unit/security results are local backend behaviour only; they are not MCP,
   A2A, Langflow or deployment results.
+
+
+## Phase 08 results (20 Oct 2026, 13:00–13:35 UTC) — interim
+
+| Item | Status | Evidence |
+|---|---|---|
+| Server A2A flag | TESTED: enabled | `GET /api/v1/config` `a2a_enabled: true`; `GET /api/v1/a2a/agents` 200; pane without the "turned off" banner (`08-04`) |
+| Lab readiness / plans / exchanges / commit re-check | TESTED locally; **NOT DEPLOYED** | 496 tests pass; live lab `GET /v1/readiness` 404 until the redeploy |
+| TS-20 Production Manager | TESTED | `489890aa-4bd0-4641-b669-070f10e0922b`; authenticated A2A task completed with Operations' own tool trace (run `run_5ccf7f11…`) |
+| A2A-01 card discovery | PASS | `protocolVersion` 0.3.0, JSONRPC, apiKey `x-api-key`; card public (200 without key); `url` advertises http:// (finding 1) |
+| A2A-03 unauthorized execution | PASS | `message/send` no key 401, wrong key 401, valid key 200; `tasks/get` no key 401 |
+| A2A-02 authenticated assessment via Sprint Room | NOT RUN | needs the redeployed lab (exchange recording, readiness) |
+| A2A-04 unreachable peer / duplicate assessment | NOT RUN (live); unit-tested (plan dedup, exchange without task) | after redeploy |
+| Exports | DONE | `flows/20_operations.json` (sha256 `43c70f5e…`), `flows/10_sprint_room.json` (`dcb0ad3d…`); `import_flows.py --dry-run` keep ×6 |

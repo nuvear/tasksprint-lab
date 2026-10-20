@@ -1338,7 +1338,7 @@
               }
             },
             "tool_mode": false,
-            "last_updated": "2026-10-20T12:26:25.562Z",
+            "last_updated": "2026-10-20T12:47:17.954Z",
             "lf_version": "1.12.5"
           },
           "showNode": true,
@@ -1821,7 +1821,7 @@
                 "placeholder": "",
                 "show": true,
                 "name": "delegation_timeout_s",
-                "value": 90.0,
+                "value": 90,
                 "display_name": "Delegation timeout (s)",
                 "advanced": true,
                 "api_editable": false,
@@ -1872,7 +1872,7 @@
                 "placeholder": "",
                 "show": true,
                 "name": "invocation_timeout_s",
-                "value": 90.0,
+                "value": 90,
                 "display_name": "Invocation deadline (s)",
                 "advanced": true,
                 "api_editable": false,
@@ -1976,7 +1976,7 @@
                 "placeholder": "",
                 "show": true,
                 "name": "tool_timeout_s",
-                "value": 30.0,
+                "value": 30,
                 "display_name": "Per-call timeout (s)",
                 "advanced": true,
                 "api_editable": false,
@@ -2104,6 +2104,10 @@
           "showNode": true,
           "type": "TaskSprintBoundedToolset",
           "id": "TaskSprintBoundedToolset-UUfE5"
+        },
+        "measured": {
+          "width": 320,
+          "height": 413
         }
       }
     ],
@@ -2255,7 +2259,7 @@
       }
     ],
     "viewport": {
-      "x": 93.90710900473931,
+      "x": 50.35071090047393,
       "y": 372.6445497630332,
       "zoom": 0.680568720379147
     }

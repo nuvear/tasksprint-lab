@@ -226,3 +226,53 @@ Screenshots `06-01` … `06-28`. Detail and evidence IDs: `docs/PHASE06_REPORT.m
   and applied to that run only.
 - Still not observed: the custom-component code editor's save button label; the label of the
   node's advanced-settings panel in this phase (fields were set by the setup script).
+
+## Phase 08 additions — A2A publishing, Agent Card, API keys (20 Oct 2026, 13:00–13:30 UTC)
+
+**A2A enabled (verified before any Phase 08 change).** After the owner-approved
+`LANGFLOW_A2A_ENABLED=true` redeploy: `GET /api/v1/config` → `"a2a_enabled": true`;
+`GET /api/v1/a2a/agents` (bootstrap key) → `200 []`; the rail **Agent** pane no longer shows the
+Phase 01 banner "A2A is turned off on this server…" (`08-04`, TS-30 viewed, nothing changed).
+
+**Agent pane (left rail icon "Agent", robot), exact labels** (`08-04`, `08-07`, `08-08`):
+* Header **Serve as an A2A agent** with a toggle and a status chip. States observed:
+  **Draft** + "Off. Nobody can reach it yet." → after switching on: **Draft** + "Turn on, then save to
+  publish." → after **Save**: **Live** + "Live. Reachable at the address below."
+* Card preview: flow name, "from this flow" (after publish "1.12.5 · from this flow"); before publish
+  "Not reachable yet. Publish to expose it." / "Publish to preview the input contract and address
+  callers use."; after publish "Requires an API key (x-api-key)", **Input contract** "what a caller
+  sends": `input_value` string optional, `session_id` string optional.
+* **Address** with tabs **URL** / **curl**, a read-only text box and a copy button
+  (accessible name "Copy agent card URL").
+* **Customize card** "Optional. Overrides what the card advertises. Leave blank to use the flow's own
+  name and description." Fields **Name**, **Version**, **Description**, **Tags** ("Keywords that help
+  people find this agent.", placeholder "e.g. billing"), **Examples** ("Sample prompts shown to
+  callers. They don't affect how it runs."), button **Save**; toast **Agent updated**.
+* Right side **Try it** "over the live A2A endpoint": before publish "Publish the agent to test it over
+  the live endpoint."; after: "Send a message to start a conversation with the live agent.", an
+  **x-api-key for this agent** field ("This agent is behind an API key. Paste a valid key to test it."),
+  **Message the agent**, **Send** (Send stays disabled without a key, so the UI cannot demonstrate a
+  server-side denial; that test is by script, see PHASE08_REPORT).
+* Saving with the toggle on sent `PATCH /api/v1/flows/{id}` and the flow became `flow_type=agent`,
+  `a2a_enabled=true` (`a2a_card_overrides={}`); then `GET .../.well-known/agent-card.json` 200.
+  No separate "save as agent type" step was needed: the pane's Save sets the type.
+
+**Card URL format.** `<base>/api/v1/a2a/<flow id>/.well-known/agent-card.json`; JSON-RPC
+`<base>/api/v1/a2a/<flow id>/jsonrpc`. **Observed discrepancy:** `GET /api/v1/a2a/agents` (`cardUrl`)
+and the card's own `url` use **`http://`**langflow-railway-production-f493.up.railway.app (Langflow
+behind Railway's TLS proxy builds URLs from the plain-HTTP request); Railway answers `http://` with
+**301** to `https://`. The same card is served on `https://`. The trusted adapter therefore fetches
+the card over https and upgrades the advertised RPC scheme to https (same host/path/transport),
+recording that it did so; it never sends the key over http. The native **A2A Agent** node would treat
+the `http://` RPC url as off-origin and strip `x-api-key` (lfx 1.12.5 `build_a2a_client`).
+
+**Settings → Langflow API Keys** (`08-05`, Key column masked in the saved copy): columns **Name**,
+**Key** (masked prefix), **Created**, **Last Used**, **Expires**, **Total Uses**; **Add New** button;
+footer delete/refresh, "1 to 4 of 4". The page loads `GET /api/v1/api_key/`. Rows now:
+`MCP Project TaskSprint - default`, `tasksprint-bootstrap`, `tasksprint-a2a-runtime` (new, expires
+2027-01-18), `MCP Project Starter Project - default`. Times are shown in the browser's local zone (SGT).
+
+**TS-10 canvas** (`08-09`, `08-10`): new node **TaskSprint A2A Audit** (fields **Agent card URL (fixed
+peer)**, **Peer flow ID**, **A2A API key** = chip `TS_A2A_API_KEY`, **Coordinator token (audit)** =
+chip `TS_COORD_TOKEN`; output **Toolset**) wired into the Bounded Toolset's new input
+**A2A peer: TS-20 Production Manager**. Scrolling on the canvas zooms (40% → 26%).

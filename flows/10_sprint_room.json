@@ -1,6 +1,6 @@
 {
   "name": "TS-10 Sprint Room",
-  "description": "TaskSprint Phase 07: Scrum Coordinator agent with three bounded specialist delegations.",
+  "description": "TaskSprint Phase 08: Scrum Coordinator agent with three bounded specialist delegations and one A2A assessment peer (TS-20).",
   "icon": null,
   "icon_bg_color": null,
   "gradient": null,
@@ -1068,23 +1068,6 @@
                     }
                   },
                   {
-                    "name": "gpt-6-luna",
-                    "icon": "OpenAI",
-                    "category": "OpenAI",
-                    "provider": "OpenAI",
-                    "metadata": {
-                      "context_length": 128000,
-                      "model_class": "ChatOpenAI",
-                      "model_name_param": "model",
-                      "api_key_param": "api_key",
-                      "max_tokens_field_name": "max_tokens",
-                      "reasoning": true,
-                      "reasoning_models": [
-                        "gpt-6-luna"
-                      ]
-                    }
-                  },
-                  {
                     "name": "gpt-6-sol",
                     "icon": "OpenAI",
                     "category": "OpenAI",
@@ -1098,6 +1081,23 @@
                       "reasoning": true,
                       "reasoning_models": [
                         "gpt-6-sol"
+                      ]
+                    }
+                  },
+                  {
+                    "name": "gpt-6-luna",
+                    "icon": "OpenAI",
+                    "category": "OpenAI",
+                    "provider": "OpenAI",
+                    "metadata": {
+                      "context_length": 128000,
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "api_key_param": "api_key",
+                      "max_tokens_field_name": "max_tokens",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-6-luna"
                       ]
                     }
                   },
@@ -1337,7 +1337,7 @@
               }
             },
             "tool_mode": false,
-            "last_updated": "2026-10-20T12:37:19.348Z",
+            "last_updated": "2026-10-20T13:23:49.116Z",
             "lf_version": "1.12.5"
           },
           "showNode": true,
@@ -1693,6 +1693,29 @@
                 "type": "other",
                 "_input_type": "HandleInput"
               },
+              "operations_peer": {
+                "trace_as_metadata": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "operations_peer",
+                "value": "",
+                "display_name": "A2A peer: TS-20 Production Manager",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [
+                  "Tool"
+                ],
+                "dynamic": false,
+                "info": "Coordinator only: the Toolset of the TaskSprint A2A Audit adapter bound to the TS-20 Production Manager card.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "other",
+                "_input_type": "HandleInput"
+              },
               "product_owner_flow": {
                 "trace_as_metadata": true,
                 "list": false,
@@ -1765,6 +1788,27 @@
                 "type": "other",
                 "_input_type": "JSONInput"
               },
+              "a2a_timeout_s": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "a2a_timeout_s",
+                "value": 90,
+                "display_name": "A2A assessment timeout (s)",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": true,
+                "type": "float",
+                "_input_type": "FloatInput"
+              },
               "api_base": {
                 "tool_mode": false,
                 "trace_as_input": true,
@@ -1798,7 +1842,7 @@
                 "list": false,
                 "show": true,
                 "multiline": true,
-                "value": "# TaskSprint Bounded Toolset: trusted Langflow custom component (Architecture A8, A9; Phase 07).\n# Exposes exactly the authenticated role's allowlisted TaskSprint MCP tools to an Agent, plus (for\n# the coordinator only) three fixed delegation tools wrapping the Run Flow tools of TS-01/02/03.\n# Every MCP tool call opens a fresh Streamable-HTTP MCP session that carries the server-issued run\n# from the TaskSprint Run Context (X-TaskSprint-Run), so each Agent invocation is charged to its own\n# run. The harness counts actions (tool calls and delegations, not model iterations), enforces the\n# per-invocation budget and deadline, per-call timeouts, delegation depth, one repair cycle and\n# no-progress stopping, and returns structured errors instead of raising. The model cannot change\n# any limit: limits are component inputs, never tool arguments. The lab enforces the same budgets\n# independently (8 actions per run, 24 per run tree, depth 2, 90 s / 180 s deadlines).\n# Version 1.0.0. Source of truth: tasksprint-lab/components/bounded_toolset.py\nfrom __future__ import annotations\n\nimport asyncio\nimport concurrent.futures\nimport hashlib\nimport json\nimport re\nimport time\nfrom typing import Any\nfrom urllib.parse import urlparse\n\nimport anyio\nimport httpx\nfrom langchain_core.tools import StructuredTool\nfrom pydantic import BaseModel, Field\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, DropdownInput, FloatInput, HandleInput, IntInput, MessageTextInput, Output, SecretStrInput\nfrom lfx.schema.json_schema import create_input_schema_from_json_schema\n\nADAPTER_VERSION = \"bounded_toolset/1.0.0\"\nWORKSPACE_RE = re.compile(r\"^[a-z0-9][a-z0-9-]{2,63}$\")\nRUN_RE = re.compile(r\"^run_[0-9a-f]{32}$\")\n# Fixed per-role allowlist = the lab's Phase 04 visibility matrix. A tool the lab lists but this\n# table does not name is not exposed; a tool named here but not listed by the lab is not exposed.\nALLOWLIST: dict[str, tuple[str, ...]] = {\n    \"product_owner\": (\"get_sprint_state\", \"search_approved_knowledge\"),\n    \"developer\": (\"get_sprint_state\", \"search_approved_knowledge\", \"list_skills\", \"load_skill\", \"read_candidate\",\n                  \"submit_candidate\"),\n    \"qa\": (\"get_sprint_state\", \"read_candidate\", \"run_candidate_tests\", \"read_test_report\", \"read_recent_events\"),\n    \"coordinator\": (\"get_sprint_state\", \"record_story\", \"transition_story\", \"read_preferences\", \"save_preference\",\n                    \"read_test_report\", \"read_recent_events\"),\n}\n# Delegation slots: fixed tool name, the only flow allowed in the slot, and its purpose.\nDELEGATIONS: tuple[tuple[str, str, str, str], ...] = (\n    (\"product_owner_flow\", \"ask_product_owner\", \"TS-01 Product Owner\",\n     \"Delegate a scope or acceptance-criteria question to the Product Owner specialist (TS-01). It retrieves \"\n     \"approved requirement evidence and returns a cited story proposal or answer. It cannot approve scope.\"),\n    (\"developer_flow\", \"ask_developer\", \"TS-02 Developer\",\n     \"Delegate implementation or ONE repair of the complete(tasks, task_id) candidate to the Developer specialist \"\n     \"(TS-02). For a repair, include the failing test report ID and the failed assertions (expected/actual). \"\n     \"Returns the new candidate ID and hash. Submission is not a test pass.\"),\n    (\"qa_flow\", \"ask_qa\", \"TS-03 QA\",\n     \"Delegate an independent protected-suite run for one exact candidate ID to the QA specialist (TS-03). \"\n     \"Returns the runner-written test report ID and the failed assertions, if any.\"),\n)\n# Lab errors after which the run can do nothing more in this invocation.\nTERMINAL_LAB_CODES = {\"BUDGET_EXHAUSTED\", \"RUN_EXPIRED\", \"RUN_NOT_ACTIVE\", \"RUN_STALE_GENERATION\", \"RUN_NOT_BOUND\",\n                      \"WORKSPACE_INACTIVE\", \"UNAUTHENTICATED\"}\nNO_PROGRESS_REPEATS = 3  # the same call with the same arguments a third time stops the invocation\nMAX_RESULT_CHARS = 8000\n\n\ndef _norm(text: str) -> str:\n    return re.sub(r\"[^a-z0-9]\", \"\", text.lower())\n\n\nclass DelegationArgs(BaseModel):\n    request: str = Field(..., min_length=1, max_length=4000,\n                         description=\"The bounded task for the specialist: what to do, with the exact IDs it needs.\")\n\n\nclass _Ledger:\n    \"\"\"Per-invocation harness state. Lives only for one build of this component (one flow run).\"\"\"\n\n    def __init__(self, run: dict, max_actions: int, invocation_timeout_s: float):\n        self.run = run\n        self.max_actions = max_actions\n        server_deadline = run.get(\"deadline_epoch\") or (time.time() + invocation_timeout_s)\n        self.deadline = min(time.time() + invocation_timeout_s, server_deadline)\n        self.actions = 0\n        self.delegations: dict[str, int] = {}\n        self.calls: dict[str, int] = {}\n        self.stopped: dict | None = None\n        self.trace: list[dict] = []\n\n    def remaining(self) -> float:\n        return self.deadline - time.time()\n\n    def view(self) -> dict:\n        return {\"scope\": \"this Agent invocation (trusted wrapper; the lab's own run budget is reported separately \"\n                         \"as 'budget')\",\n                \"run_id\": self.run[\"run_id\"], \"role\": self.run.get(\"role\"), \"depth\": self.run.get(\"depth\"),\n                \"invocation_actions_used\": self.actions, \"invocation_max_actions\": self.max_actions,\n                \"remaining_s\": max(0, round(self.remaining(), 1)), \"delegations\": dict(self.delegations),\n                \"invocation_stopped\": self.stopped}\n\n    def stop(self, code: str, message: str) -> None:\n        if self.stopped is None:\n            self.stopped = {\"code\": code, \"message\": message}\n\n\nclass TaskSprintBoundedToolset(Component):\n    display_name = \"TaskSprint Bounded Toolset\"\n    description = (\"Trusted harness: exposes only this role's allowlisted TaskSprint MCP tools (fresh MCP session per \"\n                   \"call, bound to the Run Context's server-issued run) and, for the coordinator, three fixed \"\n                   \"specialist delegations, with action budgets, deadlines, depth and repair limits.\")\n    icon = \"shield-check\"\n    name = \"TaskSprintBoundedToolset\"\n\n    inputs = [\n        DataInput(name=\"run_info\", display_name=\"Run\", required=True,\n                  info=\"Connect the 'Run' output of the TaskSprint Run Context in this flow.\"),\n        DropdownInput(name=\"expected_role\", display_name=\"Role\", options=list(ALLOWLIST), value=\"product_owner\",\n                      info=\"The role this flow's credential must authenticate as. Fixes the tool allowlist.\"),\n        SecretStrInput(name=\"role_token\", display_name=\"Role token\", value=\"\", load_from_db=True,\n                       info=\"Bind the same Credential global as the Run Context (TS_PO_TOKEN, TS_DEV_TOKEN, ...).\"),\n        MessageTextInput(name=\"api_base\", display_name=\"TaskSprint API base\", value=\"TASKSPRINT_API_BASE\",\n                         load_from_db=True, advanced=True, info=\"Bind the Generic global TASKSPRINT_API_BASE.\"),\n        MessageTextInput(name=\"workspace\", display_name=\"Workspace\", value=\"demo-001\", advanced=True),\n        IntInput(name=\"max_actions\", display_name=\"Max tool actions per invocation\", value=8, advanced=True,\n                 info=\"Tool calls plus delegations in one Agent invocation (1-8; the lab caps each run at 8).\"),\n        FloatInput(name=\"invocation_timeout_s\", display_name=\"Invocation deadline (s)\", value=90.0, advanced=True,\n                   info=\"90 for a specialist, 180 for the coordinator. Never later than the lab run's deadline.\"),\n        FloatInput(name=\"tool_timeout_s\", display_name=\"Per-call timeout (s)\", value=30.0, advanced=True),\n        IntInput(name=\"max_depth\", display_name=\"Max delegation depth\", value=2, advanced=True),\n        IntInput(name=\"max_repairs\", display_name=\"Repair cycles per turn\", value=1, advanced=True,\n                 info=\"Developer and QA may each be asked 1 + this many times in one coordinator turn.\"),\n        FloatInput(name=\"delegation_timeout_s\", display_name=\"Delegation timeout (s)\", value=90.0, advanced=True),\n        HandleInput(name=\"product_owner_flow\", display_name=\"Run Flow: TS-01 Product Owner\", input_types=[\"Tool\"],\n                    required=False, info=\"Coordinator only: the Toolset of a Run Flow set to TS-01 Product Owner.\"),\n        HandleInput(name=\"developer_flow\", display_name=\"Run Flow: TS-02 Developer\", input_types=[\"Tool\"],\n                    required=False, info=\"Coordinator only: the Toolset of a Run Flow set to TS-02 Developer.\"),\n        HandleInput(name=\"qa_flow\", display_name=\"Run Flow: TS-03 QA\", input_types=[\"Tool\"], required=False,\n                    info=\"Coordinator only: the Toolset of a Run Flow set to TS-03 QA.\"),\n    ]\n    outputs = [Output(display_name=\"Toolset\", name=\"component_as_tool\", method=\"to_toolkit\", types=[\"Tool\"],\n                      cache=False)]\n\n    # ------------------------------------------------------------------ configuration checks\n    def _config(self) -> tuple[str, str, str, dict]:\n        base = (self.api_base or \"\").strip().rstrip(\"/\")\n        u = urlparse(base)\n        if u.scheme != \"https\" or not u.hostname or u.path or u.query or u.fragment or u.username:\n            raise ValueError(\"TASKSPRINT_API_BASE must be an https origin without a path\")\n        workspace = (self.workspace or \"\").strip()\n        if not WORKSPACE_RE.match(workspace):\n            raise ValueError(\"workspace id is invalid\")\n        token = self.role_token or \"\"\n        if len(token) < 32:\n            raise ValueError(\"role token is not bound (Credential global variable missing)\")\n        raw = self.run_info\n        data = getattr(raw, \"data\", raw) if raw is not None else None\n        if not isinstance(data, dict) or not RUN_RE.match(str(data.get(\"run_id\", \"\"))):\n            raise ValueError(\"connect the Run output of the TaskSprint Run Context (no server-issued run)\")\n        if data.get(\"role\") != self.expected_role:\n            raise ValueError(f\"run role {data.get('role')!r} does not match this toolset's role {self.expected_role!r}\")\n        return base, workspace, token, dict(data)\n\n    def _headers(self, token: str, workspace: str, run_id: str) -> dict[str, str]:\n        return {\"Authorization\": f\"Bearer {token}\", \"X-TaskSprint-Workspace\": workspace, \"X-TaskSprint-Run\": run_id,\n                \"User-Agent\": ADAPTER_VERSION}\n\n    # ------------------------------------------------------------------ MCP over Streamable HTTP (official SDK)\n    async def _session_do(self, url: str, headers: dict, timeout: float, fn):\n        from mcp import ClientSession  # Langflow 1.12 ships mcp>=1.17,<2\n\n        try:\n            from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client\n        except ImportError:  # older 1.x SDK\n            create_mcp_http_client = None\n            from mcp.client.streamable_http import streamablehttp_client\n        with anyio.fail_after(timeout):\n            if create_mcp_http_client is not None:\n                async with create_mcp_http_client(headers=headers, timeout=httpx.Timeout(timeout)) as http:\n                    async with streamable_http_client(url, http_client=http) as (read, write, _):\n                        async with ClientSession(read, write) as session:\n                            await session.initialize()\n                            return await fn(session)\n            async with streamablehttp_client(url, headers=headers, timeout=timeout) as (read, write, _):\n                async with ClientSession(read, write) as session:\n                    await session.initialize()\n                    return await fn(session)\n\n    async def _list_tools(self, base: str, workspace: str, token: str, run_id: str) -> list:\n        async def do(session):\n            return (await session.list_tools()).tools\n        return await self._session_do(base + \"/mcp\", self._headers(token, workspace, run_id),\n                                      float(self.tool_timeout_s or 30), do)\n\n    # ------------------------------------------------------------------ results\n    @staticmethod\n    def _out(payload: dict, ledger: _Ledger) -> str:\n        # The harness view is a snapshot when this result is returned; parallel calls can finish in any order.\n        payload = {**payload, \"harness\": ledger.view()}\n        text = json.dumps(payload, sort_keys=True, default=str)\n        return text if len(text) <= MAX_RESULT_CHARS else text[:MAX_RESULT_CHARS] + \"...[truncated]\"\n\n    def _refuse(self, ledger: _Ledger, tool: str, code: str, message: str, terminal: bool = True) -> str:\n        if terminal:\n            ledger.stop(code, message)\n        ledger.trace.append({\"tool\": tool, \"outcome\": \"refused\", \"code\": code})\n        return self._out({\"error\": {\"code\": code, \"message\": message, \"source\": \"harness\"}}, ledger)\n\n    def _gate(self, ledger: _Ledger, tool: str, key: str) -> str | None:\n        \"\"\"Checks before any action; returns a structured refusal or None.\"\"\"\n        if ledger.stopped is not None:\n            return self._refuse(ledger, tool, \"HARNESS_STOPPED\",\n                                f\"this invocation already stopped ({ledger.stopped['code']}); escalate to the human\",\n                                terminal=False)\n        if ledger.remaining() <= 0:\n            return self._refuse(ledger, tool, \"INVOCATION_DEADLINE_PASSED\",\n                                \"the invocation deadline has passed; stop and escalate\")\n        if ledger.actions >= ledger.max_actions:\n            return self._refuse(ledger, tool, \"BUDGET_EXHAUSTED\",\n                                f\"the action budget of {ledger.max_actions} for this invocation is used; stop and \"\n                                \"escalate\")\n        ledger.calls[key] = ledger.calls.get(key, 0) + 1\n        if ledger.calls[key] >= NO_PROGRESS_REPEATS:\n            return self._refuse(ledger, tool, \"NO_PROGRESS\",\n                                f\"the same call was requested {NO_PROGRESS_REPEATS} times without progress; stop\")\n        return None\n\n    # ------------------------------------------------------------------ one bounded MCP tool call\n    async def _call_mcp(self, ledger: _Ledger, conf: tuple, name: str, read_only: bool, args: dict) -> str:\n        base, workspace, token = conf\n        key = name + \":\" + hashlib.sha256(json.dumps(args, sort_keys=True, default=str).encode()).hexdigest()[:16]\n        refusal = self._gate(ledger, name, key)\n        if refusal:\n            return refusal\n        attempts = 2 if read_only else 1  # one retry for a transient read; no blind write retries\n        last_err = None\n        for attempt in range(attempts):\n            if ledger.actions >= ledger.max_actions or ledger.remaining() <= 0:\n                break\n            ledger.actions += 1\n            timeout = max(0.5, min(float(self.tool_timeout_s or 30), ledger.remaining()))\n\n            async def do(session):\n                return await session.call_tool(name, args)\n            try:\n                res = await self._session_do(base + \"/mcp\", self._headers(token, workspace, ledger.run[\"run_id\"]),\n                                             timeout, do)\n            except TimeoutError:\n                ledger.stop(\"TOOL_TIMEOUT\", f\"{name} did not answer within {timeout:.0f} s\")\n                ledger.trace.append({\"tool\": name, \"outcome\": \"timeout\"})\n                return self._out({\"error\": {\"code\": \"TOOL_TIMEOUT\", \"source\": \"harness\", \"message\":\n                                            f\"{name} did not answer within {timeout:.0f} s. The outcome is unknown; \"\n                                            \"this invocation is stopped. Read state before any new attempt.\"}}, ledger)\n            except Exception as exc:  # noqa: BLE001 - transport failure becomes a structured result\n                last_err = f\"{type(exc).__name__}\"\n                ledger.trace.append({\"tool\": name, \"outcome\": \"transport_error\", \"attempt\": attempt + 1})\n                continue\n            body = res.structuredContent\n            if not isinstance(body, dict):\n                texts = [c.text for c in (res.content or []) if getattr(c, \"type\", \"\") == \"text\"]\n                try:\n                    body = json.loads(texts[0]) if texts else {}\n                except ValueError:\n                    body = {\"text\": texts[0][:2000]}\n            if res.isError:\n                code = (body.get(\"error\") or {}).get(\"code\", \"TOOL_ERROR\")\n                if code in TERMINAL_LAB_CODES:\n                    ledger.stop(code, (body.get(\"error\") or {}).get(\"message\", \"\"))\n                ledger.trace.append({\"tool\": name, \"outcome\": \"error\", \"code\": code})\n                return self._out(body, ledger)\n            ledger.trace.append({\"tool\": name, \"outcome\": \"ok\"})\n            return self._out(body, ledger)\n        if last_err is None:\n            return self._refuse(ledger, name, \"BUDGET_EXHAUSTED\", \"no action budget or time left for this call\")\n        return self._out({\"error\": {\"code\": \"LAB_UNREACHABLE\", \"source\": \"harness\",\n                                    \"message\": f\"{name}: the TaskSprint lab could not be reached ({last_err}). \"\n                                               \"Nothing is known to have changed; escalate.\"}}, ledger)\n\n    # ------------------------------------------------------------------ one bounded delegation\n    async def _delegate(self, ledger: _Ledger, conf: tuple, slot: str, tool_name: str, inner, request: str) -> str:\n        base, workspace, token = conf\n        key = tool_name + \":\" + hashlib.sha256(request.encode()).hexdigest()[:16]\n        refusal = self._gate(ledger, tool_name, key)\n        if refusal:\n            return refusal\n        depth = int(ledger.run.get(\"depth\") or 0)\n        if depth + 1 > max(0, min(2, int(self.max_depth))):\n            return self._refuse(ledger, tool_name, \"DELEGATION_DEPTH_EXCEEDED\",\n                                f\"delegation depth would exceed {self.max_depth}\", terminal=False)\n        limit = 1 + max(0, min(1, int(self.max_repairs)))\n        used = ledger.delegations.get(tool_name, 0)\n        if tool_name in (\"ask_developer\", \"ask_qa\") and used >= limit:\n            return self._refuse(ledger, tool_name, \"REPAIR_BUDGET_EXHAUSTED\",\n                                f\"{tool_name} was already used {used} times in this turn (one implementation plus \"\n                                f\"{limit - 1} repair cycle); escalate to the human with the evidence IDs\")\n        if tool_name == \"ask_product_owner\" and used >= 2:\n            return self._refuse(ledger, tool_name, \"DELEGATION_LIMIT\", \"ask_product_owner already used twice this \"\n                                \"turn; escalate the open scope question to the human\", terminal=False)\n        # Charge the delegation as one action of the parent run (and its tree) at the lab before starting it.\n        ledger.actions += 1\n        try:\n            async with httpx.AsyncClient(timeout=min(15.0, max(0.5, ledger.remaining())),\n                                         follow_redirects=False) as client:\n                r = await client.get(base + \"/v1/state\", headers=self._headers(token, workspace, ledger.run[\"run_id\"]))\n        except httpx.HTTPError as exc:\n            return self._out({\"error\": {\"code\": \"LAB_UNREACHABLE\", \"source\": \"harness\",\n                                        \"message\": f\"could not charge the delegation ({type(exc).__name__}); \"\n                                                   \"not delegated\"}}, ledger)\n        if r.status_code != 200:\n            try:\n                err = r.json().get(\"error\") or {}\n            except ValueError:\n                err = {}\n            code = err.get(\"code\", f\"HTTP_{r.status_code}\")\n            if code in TERMINAL_LAB_CODES:\n                ledger.stop(code, err.get(\"message\", \"\"))\n            ledger.trace.append({\"tool\": tool_name, \"outcome\": \"refused_by_lab\", \"code\": code})\n            return self._out({\"error\": {\"code\": code, \"message\": err.get(\"message\", \"\"), \"source\": \"lab\",\n                                        \"request_id\": err.get(\"request_id\")}}, ledger)\n        ledger.delegations[tool_name] = used + 1\n        timeout = max(1.0, min(float(self.delegation_timeout_s or 90), ledger.remaining()))\n        field = self._inner_field(inner)\n        started = time.time()\n        try:\n            with anyio.fail_after(timeout):\n                out = await inner.ainvoke({\"flow_tweak_data\": {field: request}})\n        except TimeoutError:\n            ledger.stop(\"DELEGATION_TIMEOUT\", f\"{tool_name} did not finish within {timeout:.0f} s\")\n            ledger.trace.append({\"tool\": tool_name, \"outcome\": \"timeout\"})\n            return self._out({\"error\": {\"code\": \"DELEGATION_TIMEOUT\", \"source\": \"harness\", \"message\":\n                                        f\"{tool_name} was cancelled after {timeout:.0f} s. Its lab run expires at its \"\n                                        \"own deadline; read state before deciding. This turn is stopped.\"}}, ledger)\n        except Exception as exc:  # noqa: BLE001\n            ledger.trace.append({\"tool\": tool_name, \"outcome\": \"error\"})\n            return self._out({\"error\": {\"code\": \"DELEGATION_FAILED\", \"source\": \"harness\",\n                                        \"message\": f\"{tool_name} failed ({type(exc).__name__}: {str(exc)[:300]})\"}},\n                             ledger)\n        text = out if isinstance(out, str) else json.dumps(out, default=str)\n        ledger.trace.append({\"tool\": tool_name, \"outcome\": \"ok\", \"elapsed_s\": round(time.time() - started, 1)})\n        return self._out({\"delegation\": {\"tool\": tool_name, \"flow\": dict((d[1], d[2]) for d in DELEGATIONS)[tool_name],\n                                         \"parent_run_id\": ledger.run[\"run_id\"], \"elapsed_s\": round(time.time() - started, 1)},\n                          \"specialist_response\": text[:6000]}, ledger)\n\n    @staticmethod\n    def _inner_field(inner) -> str:\n        schema = inner.args_schema\n        outer = getattr(schema, \"model_fields\", {}).get(\"flow_tweak_data\")\n        fields = getattr(outer.annotation, \"model_fields\", {}) if outer is not None else {}\n        names = [n for n in fields if n.endswith(\"~input_value\")]\n        if len(names) != 1:\n            raise ValueError(\"the Run Flow tool does not expose exactly one Chat Input text field\")\n        return names[0]\n\n    # ------------------------------------------------------------------ tool construction\n    @staticmethod\n    def _sync(coro_fn):\n        def run_sync(**kwargs):\n            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:\n                return ex.submit(lambda: asyncio.run(coro_fn(**kwargs))).result()\n        return run_sync\n\n    def _delegation_tools(self, ledger: _Ledger, conf: tuple) -> list:\n        tools = []\n        wired = {slot: getattr(self, slot, None) for slot, *_ in DELEGATIONS}\n        if self.expected_role != \"coordinator\":\n            if any(wired.values()):\n                raise ValueError(\"only the coordinator toolset may carry delegation tools\")\n            return tools\n        for slot, tool_name, flow_name, purpose in DELEGATIONS:\n            value = wired[slot]\n            inner_list = value if isinstance(value, list) else ([value] if value else [])\n            if len(inner_list) != 1:\n                raise ValueError(f\"connect exactly one Run Flow ({flow_name}) to '{slot}'\")\n            inner = inner_list[0]\n            expected = _norm(flow_name + \"_tool\")\n            if _norm(getattr(inner, \"name\", \"\")) != expected or flow_name not in (getattr(inner, \"description\", \"\") or \"\"):\n                raise ValueError(f\"'{slot}' accepts only the Run Flow tool for {flow_name}\")\n\n            run = self._delegation_fn(ledger, conf, slot, tool_name, inner)\n            tools.append(StructuredTool(name=tool_name, description=purpose, args_schema=DelegationArgs,\n                                        coroutine=run, func=self._sync(run), tags=[tool_name],\n                                        metadata={\"source\": ADAPTER_VERSION, \"flow\": flow_name}))\n        return tools\n\n    def _delegation_fn(self, ledger: _Ledger, conf: tuple, slot: str, tool_name: str, inner):\n        async def run(request: str) -> str:\n            return await self._delegate(ledger, conf, slot, tool_name, inner, request)\n        return run\n\n    def _mcp_fn(self, ledger: _Ledger, conf: tuple, name: str, read_only: bool):\n        async def run(**kwargs) -> str:\n            args = {k: (v.model_dump(exclude_none=True) if isinstance(v, BaseModel) else v)\n                    for k, v in kwargs.items() if v is not None}\n            return await self._call_mcp(ledger, conf, name, read_only, args)\n        return run\n\n    async def _get_tools(self) -> list:\n        base, workspace, token, run = self._config()\n        max_actions = max(1, min(8, int(self.max_actions)))\n        limit_s = max(5.0, min(180.0, float(self.invocation_timeout_s or 90)))\n        deadline_at = run.get(\"deadline_at\")\n        if isinstance(deadline_at, str):\n            from datetime import datetime\n            try:\n                run[\"deadline_epoch\"] = datetime.fromisoformat(deadline_at.replace(\"Z\", \"+00:00\")).timestamp()\n            except ValueError:\n                pass\n        ledger = _Ledger(run, max_actions, limit_s)\n        self._ts_ledger = ledger\n        conf = (base, workspace, token)\n        listed = await self._list_tools(base, workspace, token, run[\"run_id\"])\n        allowed = ALLOWLIST[self.expected_role]\n        tools = []\n        for t in listed:\n            if t.name not in allowed:\n                continue\n            schema = create_input_schema_from_json_schema(t.inputSchema or {\"type\": \"object\", \"properties\": {}})\n            read_only = bool(getattr(t.annotations, \"readOnlyHint\", False)) if t.annotations else False\n\n            run_tool = self._mcp_fn(ledger, conf, t.name, read_only)\n            tools.append(StructuredTool(name=t.name, description=(t.description or \"\")[:1000], args_schema=schema,\n                                        coroutine=run_tool, func=self._sync(run_tool), tags=[t.name],\n                                        metadata={\"source\": ADAPTER_VERSION, \"read_only\": read_only}))\n        tools += self._delegation_tools(ledger, conf)\n        self.status = {\"adapter\": ADAPTER_VERSION, \"role\": self.expected_role, \"run_id\": run[\"run_id\"],\n                       \"tools\": [t.name for t in tools], \"max_actions\": max_actions,\n                       \"deadline_s\": round(ledger.remaining(), 1)}\n        return tools\n",
+                "value": "# TaskSprint Bounded Toolset: trusted Langflow custom component (Architecture A8, A9; Phase 07).\n# Exposes exactly the authenticated role's allowlisted TaskSprint MCP tools to an Agent, plus (for\n# the coordinator only) three fixed delegation tools wrapping the Run Flow tools of TS-01/02/03.\n# Every MCP tool call opens a fresh Streamable-HTTP MCP session that carries the server-issued run\n# from the TaskSprint Run Context (X-TaskSprint-Run), so each Agent invocation is charged to its own\n# run. The harness counts actions (tool calls and delegations, not model iterations), enforces the\n# per-invocation budget and deadline, per-call timeouts, delegation depth, one repair cycle and\n# no-progress stopping, and returns structured errors instead of raising. The model cannot change\n# any limit: limits are component inputs, never tool arguments. The lab enforces the same budgets\n# independently (8 actions per run, 24 per run tree, depth 2, 90 s / 180 s deadlines).\n# 1.1.0 (Phase 08): the operations role (TS-20 Production Manager) and, for the coordinator, one fixed A2A\n# delegation `assess_production_release` (the name prompts/coordinator.md uses; it carries\n# the typed assess_release task), which accepts only the TaskSprint A2A Audit adapter's peer tool. The toolset\n# (not the model) builds the typed assess_release payload from contracts/handoff-task.schema.json 1.1, counts\n# the delegation as one action charged to the parent run, allows it once per turn and passes the parent run\n# as the A2A contextId (lineage). The model supplies only the three evidence references.\n# Version 1.1.0. Source of truth: tasksprint-lab/components/bounded_toolset.py\nfrom __future__ import annotations\n\nimport asyncio\nimport concurrent.futures\nimport hashlib\nimport json\nimport re\nimport time\nfrom typing import Any\nfrom urllib.parse import urlparse\n\nimport anyio\nimport httpx\nfrom langchain_core.tools import StructuredTool\nfrom pydantic import BaseModel, Field\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, DropdownInput, FloatInput, HandleInput, IntInput, MessageTextInput, Output, SecretStrInput\nfrom lfx.schema.json_schema import create_input_schema_from_json_schema\n\nADAPTER_VERSION = \"bounded_toolset/1.1.0\"\nWORKSPACE_RE = re.compile(r\"^[a-z0-9][a-z0-9-]{2,63}$\")\nRUN_RE = re.compile(r\"^run_[0-9a-f]{32}$\")\n# Fixed per-role allowlist = the lab's Phase 04 visibility matrix. A tool the lab lists but this\n# table does not name is not exposed; a tool named here but not listed by the lab is not exposed.\nALLOWLIST: dict[str, tuple[str, ...]] = {\n    \"product_owner\": (\"get_sprint_state\", \"search_approved_knowledge\"),\n    \"developer\": (\"get_sprint_state\", \"search_approved_knowledge\", \"list_skills\", \"load_skill\", \"read_candidate\",\n                  \"submit_candidate\"),\n    \"qa\": (\"get_sprint_state\", \"read_candidate\", \"run_candidate_tests\", \"read_test_report\", \"read_recent_events\"),\n    \"coordinator\": (\"get_sprint_state\", \"record_story\", \"transition_story\", \"read_preferences\", \"save_preference\",\n                    \"read_test_report\", \"read_recent_events\"),\n    \"operations\": (\"get_sprint_state\", \"list_skills\", \"load_skill\", \"read_candidate\", \"read_test_report\",\n                   \"get_release_readiness\", \"create_release_plan\", \"read_release_plan\", \"execute_approved_plan\",\n                   \"get_release_status\", \"get_app_health\", \"read_recent_events\"),\n}\n# Delegation slots: fixed tool name, the only flow allowed in the slot, and its purpose.\nDELEGATIONS: tuple[tuple[str, str, str, str], ...] = (\n    (\"product_owner_flow\", \"ask_product_owner\", \"TS-01 Product Owner\",\n     \"Delegate a scope or acceptance-criteria question to the Product Owner specialist (TS-01). It retrieves \"\n     \"approved requirement evidence and returns a cited story proposal or answer. It cannot approve scope.\"),\n    (\"developer_flow\", \"ask_developer\", \"TS-02 Developer\",\n     \"Delegate implementation or ONE repair of the complete(tasks, task_id) candidate to the Developer specialist \"\n     \"(TS-02). For a repair, include the failing test report ID and the failed assertions (expected/actual). \"\n     \"Returns the new candidate ID and hash. Submission is not a test pass.\"),\n    (\"qa_flow\", \"ask_qa\", \"TS-03 QA\",\n     \"Delegate an independent protected-suite run for one exact candidate ID to the QA specialist (TS-03). \"\n     \"Returns the runner-written test report ID and the failed assertions, if any.\"),\n)\n# The one A2A delegation (coordinator only): slot, tool name, peer, the adapter tool it accepts, purpose.\nA2A_PEER: tuple[str, str, str, str, str] = (\n    \"operations_peer\", \"assess_production_release\", \"TS-20 Production Manager\", \"ts20_production_manager_a2a\",\n    \"Ask the independent Production Manager (TS-20, over A2A) to ASSESS a release of one exact tested candidate. \"\n    \"Give the candidate ID, its sha256 and the passing protected test report ID. Operations fetches its own \"\n    \"evidence and returns a release plan reference or a blocked assessment. This never deploys and is not an \"\n    \"approval: a human must review and approve any plan separately. Once per turn.\")\nA2A_PAYLOAD_SCHEMA_VERSION = \"1.1\"\n# Lab errors after which the run can do nothing more in this invocation.\nTERMINAL_LAB_CODES = {\"BUDGET_EXHAUSTED\", \"RUN_EXPIRED\", \"RUN_NOT_ACTIVE\", \"RUN_STALE_GENERATION\", \"RUN_NOT_BOUND\",\n                      \"WORKSPACE_INACTIVE\", \"UNAUTHENTICATED\"}\nNO_PROGRESS_REPEATS = 3  # the same call with the same arguments a third time stops the invocation\nMAX_RESULT_CHARS = 8000\n\n\ndef _norm(text: str) -> str:\n    return re.sub(r\"[^a-z0-9]\", \"\", text.lower())\n\n\nclass DelegationArgs(BaseModel):\n    request: str = Field(..., min_length=1, max_length=4000,\n                         description=\"The bounded task for the specialist: what to do, with the exact IDs it needs.\")\n\n\nclass AssessArgs(BaseModel):\n    candidate_id: str = Field(..., pattern=r\"^cand_[0-9a-f]{24}$\", description=\"Exact candidate ID to assess.\")\n    candidate_sha256: str = Field(..., pattern=r\"^[a-f0-9]{64}$\", description=\"That candidate's sha256.\")\n    app_test_run_id: str = Field(..., pattern=r\"^tr_[0-9a-f]{24}$\",\n                                 description=\"The protected test report ID that passed for this exact hash.\")\n\n\nclass _Ledger:\n    \"\"\"Per-invocation harness state. Lives only for one build of this component (one flow run).\"\"\"\n\n    def __init__(self, run: dict, max_actions: int, invocation_timeout_s: float):\n        self.run = run\n        self.max_actions = max_actions\n        server_deadline = run.get(\"deadline_epoch\") or (time.time() + invocation_timeout_s)\n        self.deadline = min(time.time() + invocation_timeout_s, server_deadline)\n        self.actions = 0\n        self.delegations: dict[str, int] = {}\n        self.calls: dict[str, int] = {}\n        self.stopped: dict | None = None\n        self.trace: list[dict] = []\n\n    def remaining(self) -> float:\n        return self.deadline - time.time()\n\n    def view(self) -> dict:\n        return {\"scope\": \"this Agent invocation (trusted wrapper; the lab's own run budget is reported separately \"\n                         \"as 'budget')\",\n                \"run_id\": self.run[\"run_id\"], \"role\": self.run.get(\"role\"), \"depth\": self.run.get(\"depth\"),\n                \"invocation_actions_used\": self.actions, \"invocation_max_actions\": self.max_actions,\n                \"remaining_s\": max(0, round(self.remaining(), 1)), \"delegations\": dict(self.delegations),\n                \"invocation_stopped\": self.stopped}\n\n    def stop(self, code: str, message: str) -> None:\n        if self.stopped is None:\n            self.stopped = {\"code\": code, \"message\": message}\n\n\nclass TaskSprintBoundedToolset(Component):\n    display_name = \"TaskSprint Bounded Toolset\"\n    description = (\"Trusted harness: exposes only this role's allowlisted TaskSprint MCP tools (fresh MCP session per \"\n                   \"call, bound to the Run Context's server-issued run) and, for the coordinator, three fixed \"\n                   \"specialist delegations plus one fixed A2A assessment peer (TS-20), with action budgets, \"\n                   \"deadlines, depth and repair limits.\")\n    icon = \"shield-check\"\n    name = \"TaskSprintBoundedToolset\"\n\n    inputs = [\n        DataInput(name=\"run_info\", display_name=\"Run\", required=True,\n                  info=\"Connect the 'Run' output of the TaskSprint Run Context in this flow.\"),\n        DropdownInput(name=\"expected_role\", display_name=\"Role\", options=list(ALLOWLIST), value=\"product_owner\",\n                      info=\"The role this flow's credential must authenticate as. Fixes the tool allowlist.\"),\n        SecretStrInput(name=\"role_token\", display_name=\"Role token\", value=\"\", load_from_db=True,\n                       info=\"Bind the same Credential global as the Run Context (TS_PO_TOKEN, TS_DEV_TOKEN, ...).\"),\n        MessageTextInput(name=\"api_base\", display_name=\"TaskSprint API base\", value=\"TASKSPRINT_API_BASE\",\n                         load_from_db=True, advanced=True, info=\"Bind the Generic global TASKSPRINT_API_BASE.\"),\n        MessageTextInput(name=\"workspace\", display_name=\"Workspace\", value=\"demo-001\", advanced=True),\n        IntInput(name=\"max_actions\", display_name=\"Max tool actions per invocation\", value=8, advanced=True,\n                 info=\"Tool calls plus delegations in one Agent invocation (1-8; the lab caps each run at 8).\"),\n        FloatInput(name=\"invocation_timeout_s\", display_name=\"Invocation deadline (s)\", value=90.0, advanced=True,\n                   info=\"90 for a specialist, 180 for the coordinator. Never later than the lab run's deadline.\"),\n        FloatInput(name=\"tool_timeout_s\", display_name=\"Per-call timeout (s)\", value=30.0, advanced=True),\n        IntInput(name=\"max_depth\", display_name=\"Max delegation depth\", value=2, advanced=True),\n        IntInput(name=\"max_repairs\", display_name=\"Repair cycles per turn\", value=1, advanced=True,\n                 info=\"Developer and QA may each be asked 1 + this many times in one coordinator turn.\"),\n        FloatInput(name=\"delegation_timeout_s\", display_name=\"Delegation timeout (s)\", value=90.0, advanced=True),\n        HandleInput(name=\"product_owner_flow\", display_name=\"Run Flow: TS-01 Product Owner\", input_types=[\"Tool\"],\n                    required=False, info=\"Coordinator only: the Toolset of a Run Flow set to TS-01 Product Owner.\"),\n        HandleInput(name=\"developer_flow\", display_name=\"Run Flow: TS-02 Developer\", input_types=[\"Tool\"],\n                    required=False, info=\"Coordinator only: the Toolset of a Run Flow set to TS-02 Developer.\"),\n        HandleInput(name=\"qa_flow\", display_name=\"Run Flow: TS-03 QA\", input_types=[\"Tool\"], required=False,\n                    info=\"Coordinator only: the Toolset of a Run Flow set to TS-03 QA.\"),\n        HandleInput(name=\"operations_peer\", display_name=\"A2A peer: TS-20 Production Manager\", input_types=[\"Tool\"],\n                    required=False, info=\"Coordinator only: the Toolset of the TaskSprint A2A Audit adapter bound to \"\n                    \"the TS-20 Production Manager card.\"),\n        FloatInput(name=\"a2a_timeout_s\", display_name=\"A2A assessment timeout (s)\", value=90.0, advanced=True),\n    ]\n    outputs = [Output(display_name=\"Toolset\", name=\"component_as_tool\", method=\"to_toolkit\", types=[\"Tool\"],\n                      cache=False)]\n\n    # ------------------------------------------------------------------ configuration checks\n    def _config(self) -> tuple[str, str, str, dict]:\n        base = (self.api_base or \"\").strip().rstrip(\"/\")\n        u = urlparse(base)\n        if u.scheme != \"https\" or not u.hostname or u.path or u.query or u.fragment or u.username:\n            raise ValueError(\"TASKSPRINT_API_BASE must be an https origin without a path\")\n        workspace = (self.workspace or \"\").strip()\n        if not WORKSPACE_RE.match(workspace):\n            raise ValueError(\"workspace id is invalid\")\n        token = self.role_token or \"\"\n        if len(token) < 32:\n            raise ValueError(\"role token is not bound (Credential global variable missing)\")\n        raw = self.run_info\n        data = getattr(raw, \"data\", raw) if raw is not None else None\n        if not isinstance(data, dict) or not RUN_RE.match(str(data.get(\"run_id\", \"\"))):\n            raise ValueError(\"connect the Run output of the TaskSprint Run Context (no server-issued run)\")\n        if data.get(\"role\") != self.expected_role:\n            raise ValueError(f\"run role {data.get('role')!r} does not match this toolset's role {self.expected_role!r}\")\n        return base, workspace, token, dict(data)\n\n    def _headers(self, token: str, workspace: str, run_id: str) -> dict[str, str]:\n        return {\"Authorization\": f\"Bearer {token}\", \"X-TaskSprint-Workspace\": workspace, \"X-TaskSprint-Run\": run_id,\n                \"User-Agent\": ADAPTER_VERSION}\n\n    # ------------------------------------------------------------------ MCP over Streamable HTTP (official SDK)\n    async def _session_do(self, url: str, headers: dict, timeout: float, fn):\n        from mcp import ClientSession  # Langflow 1.12 ships mcp>=1.17,<2\n\n        try:\n            from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client\n        except ImportError:  # older 1.x SDK\n            create_mcp_http_client = None\n            from mcp.client.streamable_http import streamablehttp_client\n        with anyio.fail_after(timeout):\n            if create_mcp_http_client is not None:\n                async with create_mcp_http_client(headers=headers, timeout=httpx.Timeout(timeout)) as http:\n                    async with streamable_http_client(url, http_client=http) as (read, write, _):\n                        async with ClientSession(read, write) as session:\n                            await session.initialize()\n                            return await fn(session)\n            async with streamablehttp_client(url, headers=headers, timeout=timeout) as (read, write, _):\n                async with ClientSession(read, write) as session:\n                    await session.initialize()\n                    return await fn(session)\n\n    async def _list_tools(self, base: str, workspace: str, token: str, run_id: str) -> list:\n        async def do(session):\n            return (await session.list_tools()).tools\n        return await self._session_do(base + \"/mcp\", self._headers(token, workspace, run_id),\n                                      float(self.tool_timeout_s or 30), do)\n\n    # ------------------------------------------------------------------ results\n    @staticmethod\n    def _out(payload: dict, ledger: _Ledger) -> str:\n        # The harness view is a snapshot when this result is returned; parallel calls can finish in any order.\n        payload = {**payload, \"harness\": ledger.view()}\n        text = json.dumps(payload, sort_keys=True, default=str)\n        return text if len(text) <= MAX_RESULT_CHARS else text[:MAX_RESULT_CHARS] + \"...[truncated]\"\n\n    def _refuse(self, ledger: _Ledger, tool: str, code: str, message: str, terminal: bool = True) -> str:\n        if terminal:\n            ledger.stop(code, message)\n        ledger.trace.append({\"tool\": tool, \"outcome\": \"refused\", \"code\": code})\n        return self._out({\"error\": {\"code\": code, \"message\": message, \"source\": \"harness\"}}, ledger)\n\n    def _gate(self, ledger: _Ledger, tool: str, key: str) -> str | None:\n        \"\"\"Checks before any action; returns a structured refusal or None.\"\"\"\n        if ledger.stopped is not None:\n            return self._refuse(ledger, tool, \"HARNESS_STOPPED\",\n                                f\"this invocation already stopped ({ledger.stopped['code']}); escalate to the human\",\n                                terminal=False)\n        if ledger.remaining() <= 0:\n            return self._refuse(ledger, tool, \"INVOCATION_DEADLINE_PASSED\",\n                                \"the invocation deadline has passed; stop and escalate\")\n        if ledger.actions >= ledger.max_actions:\n            return self._refuse(ledger, tool, \"BUDGET_EXHAUSTED\",\n                                f\"the action budget of {ledger.max_actions} for this invocation is used; stop and \"\n                                \"escalate\")\n        ledger.calls[key] = ledger.calls.get(key, 0) + 1\n        if ledger.calls[key] >= NO_PROGRESS_REPEATS:\n            return self._refuse(ledger, tool, \"NO_PROGRESS\",\n                                f\"the same call was requested {NO_PROGRESS_REPEATS} times without progress; stop\")\n        return None\n\n    # ------------------------------------------------------------------ one bounded MCP tool call\n    async def _call_mcp(self, ledger: _Ledger, conf: tuple, name: str, read_only: bool, args: dict) -> str:\n        base, workspace, token = conf\n        key = name + \":\" + hashlib.sha256(json.dumps(args, sort_keys=True, default=str).encode()).hexdigest()[:16]\n        refusal = self._gate(ledger, name, key)\n        if refusal:\n            return refusal\n        attempts = 2 if read_only else 1  # one retry for a transient read; no blind write retries\n        last_err = None\n        for attempt in range(attempts):\n            if ledger.actions >= ledger.max_actions or ledger.remaining() <= 0:\n                break\n            ledger.actions += 1\n            timeout = max(0.5, min(float(self.tool_timeout_s or 30), ledger.remaining()))\n\n            async def do(session):\n                return await session.call_tool(name, args)\n            try:\n                res = await self._session_do(base + \"/mcp\", self._headers(token, workspace, ledger.run[\"run_id\"]),\n                                             timeout, do)\n            except TimeoutError:\n                ledger.stop(\"TOOL_TIMEOUT\", f\"{name} did not answer within {timeout:.0f} s\")\n                ledger.trace.append({\"tool\": name, \"outcome\": \"timeout\"})\n                return self._out({\"error\": {\"code\": \"TOOL_TIMEOUT\", \"source\": \"harness\", \"message\":\n                                            f\"{name} did not answer within {timeout:.0f} s. The outcome is unknown; \"\n                                            \"this invocation is stopped. Read state before any new attempt.\"}}, ledger)\n            except Exception as exc:  # noqa: BLE001 - transport failure becomes a structured result\n                last_err = f\"{type(exc).__name__}\"\n                ledger.trace.append({\"tool\": name, \"outcome\": \"transport_error\", \"attempt\": attempt + 1})\n                continue\n            body = res.structuredContent\n            if not isinstance(body, dict):\n                texts = [c.text for c in (res.content or []) if getattr(c, \"type\", \"\") == \"text\"]\n                try:\n                    body = json.loads(texts[0]) if texts else {}\n                except ValueError:\n                    body = {\"text\": texts[0][:2000]}\n            if res.isError:\n                code = (body.get(\"error\") or {}).get(\"code\", \"TOOL_ERROR\")\n                if code in TERMINAL_LAB_CODES:\n                    ledger.stop(code, (body.get(\"error\") or {}).get(\"message\", \"\"))\n                ledger.trace.append({\"tool\": name, \"outcome\": \"error\", \"code\": code})\n                return self._out(body, ledger)\n            ledger.trace.append({\"tool\": name, \"outcome\": \"ok\"})\n            return self._out(body, ledger)\n        if last_err is None:\n            return self._refuse(ledger, name, \"BUDGET_EXHAUSTED\", \"no action budget or time left for this call\")\n        return self._out({\"error\": {\"code\": \"LAB_UNREACHABLE\", \"source\": \"harness\",\n                                    \"message\": f\"{name}: the TaskSprint lab could not be reached ({last_err}). \"\n                                               \"Nothing is known to have changed; escalate.\"}}, ledger)\n\n    # ------------------------------------------------------------------ one bounded delegation\n    async def _delegate(self, ledger: _Ledger, conf: tuple, slot: str, tool_name: str, inner, request: str) -> str:\n        base, workspace, token = conf\n        key = tool_name + \":\" + hashlib.sha256(request.encode()).hexdigest()[:16]\n        refusal = self._gate(ledger, tool_name, key)\n        if refusal:\n            return refusal\n        depth = int(ledger.run.get(\"depth\") or 0)\n        if depth + 1 > max(0, min(2, int(self.max_depth))):\n            return self._refuse(ledger, tool_name, \"DELEGATION_DEPTH_EXCEEDED\",\n                                f\"delegation depth would exceed {self.max_depth}\", terminal=False)\n        limit = 1 + max(0, min(1, int(self.max_repairs)))\n        used = ledger.delegations.get(tool_name, 0)\n        if tool_name in (\"ask_developer\", \"ask_qa\") and used >= limit:\n            return self._refuse(ledger, tool_name, \"REPAIR_BUDGET_EXHAUSTED\",\n                                f\"{tool_name} was already used {used} times in this turn (one implementation plus \"\n                                f\"{limit - 1} repair cycle); escalate to the human with the evidence IDs\")\n        if tool_name == \"ask_product_owner\" and used >= 2:\n            return self._refuse(ledger, tool_name, \"DELEGATION_LIMIT\", \"ask_product_owner already used twice this \"\n                                \"turn; escalate the open scope question to the human\", terminal=False)\n        # Charge the delegation as one action of the parent run (and its tree) at the lab before starting it.\n        ledger.actions += 1\n        try:\n            async with httpx.AsyncClient(timeout=min(15.0, max(0.5, ledger.remaining())),\n                                         follow_redirects=False) as client:\n                r = await client.get(base + \"/v1/state\", headers=self._headers(token, workspace, ledger.run[\"run_id\"]))\n        except httpx.HTTPError as exc:\n            return self._out({\"error\": {\"code\": \"LAB_UNREACHABLE\", \"source\": \"harness\",\n                                        \"message\": f\"could not charge the delegation ({type(exc).__name__}); \"\n                                                   \"not delegated\"}}, ledger)\n        if r.status_code != 200:\n            try:\n                err = r.json().get(\"error\") or {}\n            except ValueError:\n                err = {}\n            code = err.get(\"code\", f\"HTTP_{r.status_code}\")\n            if code in TERMINAL_LAB_CODES:\n                ledger.stop(code, err.get(\"message\", \"\"))\n            ledger.trace.append({\"tool\": tool_name, \"outcome\": \"refused_by_lab\", \"code\": code})\n            return self._out({\"error\": {\"code\": code, \"message\": err.get(\"message\", \"\"), \"source\": \"lab\",\n                                        \"request_id\": err.get(\"request_id\")}}, ledger)\n        ledger.delegations[tool_name] = used + 1\n        timeout = max(1.0, min(float(self.delegation_timeout_s or 90), ledger.remaining()))\n        field = self._inner_field(inner)\n        started = time.time()\n        try:\n            with anyio.fail_after(timeout):\n                out = await inner.ainvoke({\"flow_tweak_data\": {field: request}})\n        except TimeoutError:\n            ledger.stop(\"DELEGATION_TIMEOUT\", f\"{tool_name} did not finish within {timeout:.0f} s\")\n            ledger.trace.append({\"tool\": tool_name, \"outcome\": \"timeout\"})\n            return self._out({\"error\": {\"code\": \"DELEGATION_TIMEOUT\", \"source\": \"harness\", \"message\":\n                                        f\"{tool_name} was cancelled after {timeout:.0f} s. Its lab run expires at its \"\n                                        \"own deadline; read state before deciding. This turn is stopped.\"}}, ledger)\n        except Exception as exc:  # noqa: BLE001\n            ledger.trace.append({\"tool\": tool_name, \"outcome\": \"error\"})\n            return self._out({\"error\": {\"code\": \"DELEGATION_FAILED\", \"source\": \"harness\",\n                                        \"message\": f\"{tool_name} failed ({type(exc).__name__}: {str(exc)[:300]})\"}},\n                             ledger)\n        text = out if isinstance(out, str) else json.dumps(out, default=str)\n        ledger.trace.append({\"tool\": tool_name, \"outcome\": \"ok\", \"elapsed_s\": round(time.time() - started, 1)})\n        return self._out({\"delegation\": {\"tool\": tool_name, \"flow\": dict((d[1], d[2]) for d in DELEGATIONS)[tool_name],\n                                         \"parent_run_id\": ledger.run[\"run_id\"], \"elapsed_s\": round(time.time() - started, 1)},\n                          \"specialist_response\": text[:6000]}, ledger)\n\n    # ------------------------------------------------------------------ the one A2A delegation\n    async def _assess(self, ledger: _Ledger, conf: tuple, inner, args: dict) -> str:\n        base, workspace, token = conf\n        tool_name = A2A_PEER[1]\n        key = tool_name + \":\" + hashlib.sha256(json.dumps(args, sort_keys=True).encode()).hexdigest()[:16]\n        refusal = self._gate(ledger, tool_name, key)\n        if refusal:\n            return refusal\n        depth = int(ledger.run.get(\"depth\") or 0)\n        if depth + 1 > max(0, min(2, int(self.max_depth))):\n            return self._refuse(ledger, tool_name, \"DELEGATION_DEPTH_EXCEEDED\",\n                                f\"delegation depth would exceed {self.max_depth}\", terminal=False)\n        if ledger.delegations.get(tool_name, 0) >= 1:\n            return self._refuse(ledger, tool_name, \"DELEGATION_LIMIT\", \"assess_production_release was already used this turn; \"\n                                \"report its result or escalate to the human\", terminal=False)\n        ledger.actions += 1\n        try:\n            async with httpx.AsyncClient(timeout=min(15.0, max(0.5, ledger.remaining())),\n                                         follow_redirects=False) as client:\n                r = await client.get(base + \"/v1/state\", headers=self._headers(token, workspace, ledger.run[\"run_id\"]))\n        except httpx.HTTPError as exc:\n            return self._out({\"error\": {\"code\": \"LAB_UNREACHABLE\", \"source\": \"harness\",\n                                        \"message\": f\"could not charge the delegation ({type(exc).__name__}); \"\n                                                   \"not delegated\"}}, ledger)\n        if r.status_code != 200:\n            try:\n                err = r.json().get(\"error\") or {}\n            except ValueError:\n                err = {}\n            code = err.get(\"code\", f\"HTTP_{r.status_code}\")\n            if code in TERMINAL_LAB_CODES:\n                ledger.stop(code, err.get(\"message\", \"\"))\n            ledger.trace.append({\"tool\": tool_name, \"outcome\": \"refused_by_lab\", \"code\": code})\n            return self._out({\"error\": {\"code\": code, \"message\": err.get(\"message\", \"\"), \"source\": \"lab\",\n                                        \"request_id\": err.get(\"request_id\")}}, ledger)\n        ledger.delegations[tool_name] = 1\n        timeout = max(5.0, min(float(self.a2a_timeout_s or 90), ledger.remaining()))\n        from datetime import datetime, timedelta, timezone\n        deadline = datetime.now(timezone.utc) + timedelta(seconds=timeout)\n        payload = {\"schema_version\": A2A_PAYLOAD_SCHEMA_VERSION, \"intent\": \"assess_release\", \"workspace_id\": workspace,\n                   \"candidate_id\": args[\"candidate_id\"], \"candidate_sha256\": args[\"candidate_sha256\"],\n                   \"app_test_run_id\": args[\"app_test_run_id\"], \"agent_manifest_id\": None,\n                   \"deadline_utc\": deadline.isoformat(timespec=\"seconds\").replace(\"+00:00\", \"Z\"),\n                   \"allow_execute\": False}\n        started = time.time()\n        try:\n            with anyio.fail_after(timeout + 10):\n                out = await inner.ainvoke({\"payload_json\": json.dumps(payload, sort_keys=True),\n                                           \"parent_run_id\": ledger.run[\"run_id\"]})\n        except TimeoutError:\n            ledger.stop(\"DELEGATION_TIMEOUT\", f\"{tool_name} did not finish within {timeout:.0f} s\")\n            ledger.trace.append({\"tool\": tool_name, \"outcome\": \"timeout\"})\n            return self._out({\"error\": {\"code\": \"DELEGATION_TIMEOUT\", \"source\": \"harness\", \"message\":\n                                        f\"{tool_name} was cancelled after {timeout:.0f} s. Nothing was released; \"\n                                        \"escalate to the human.\"}}, ledger)\n        except Exception as exc:  # noqa: BLE001\n            ledger.trace.append({\"tool\": tool_name, \"outcome\": \"error\"})\n            return self._out({\"error\": {\"code\": \"DELEGATION_FAILED\", \"source\": \"harness\",\n                                        \"message\": f\"{tool_name} failed ({type(exc).__name__}: {str(exc)[:300]})\"}},\n                             ledger)\n        text = out if isinstance(out, str) else json.dumps(out, default=str)\n        try:\n            result = json.loads(text)\n        except ValueError:\n            result = {\"raw\": text[:2000]}\n        ledger.trace.append({\"tool\": tool_name, \"outcome\": (result or {}).get(\"outcome\", \"unknown\"),\n                             \"elapsed_s\": round(time.time() - started, 1)})\n        return self._out({\"delegation\": {\"tool\": tool_name, \"peer\": A2A_PEER[2], \"transport\": \"A2A\",\n                                         \"parent_run_id\": ledger.run[\"run_id\"], \"payload\": payload,\n                                         \"elapsed_s\": round(time.time() - started, 1)},\n                          \"peer_result\": result}, ledger)\n\n    def _peer_tools(self, ledger: _Ledger, conf: tuple) -> list:\n        slot, tool_name, peer, inner_name, purpose = A2A_PEER\n        value = getattr(self, slot, None)\n        inner_list = value if isinstance(value, list) else ([value] if value else [])\n        if self.expected_role != \"coordinator\":\n            if inner_list:\n                raise ValueError(\"only the coordinator toolset may carry the A2A peer\")\n            return []\n        if not inner_list:\n            return []  # Phase 07 flows without the peer keep working\n        if len(inner_list) != 1:\n            raise ValueError(f\"connect exactly one TaskSprint A2A Audit adapter ({peer}) to '{slot}'\")\n        inner = inner_list[0]\n        meta = getattr(inner, \"metadata\", None) or {}\n        if getattr(inner, \"name\", \"\") != inner_name or not str(meta.get(\"source\", \"\")).startswith(\"a2a_audit/\"):\n            raise ValueError(f\"'{slot}' accepts only the TaskSprint A2A Audit adapter tool for {peer}\")\n\n        async def run(candidate_id: str, candidate_sha256: str, app_test_run_id: str) -> str:\n            return await self._assess(ledger, conf, inner, {\"candidate_id\": candidate_id,\n                                                            \"candidate_sha256\": candidate_sha256,\n                                                            \"app_test_run_id\": app_test_run_id})\n        return [StructuredTool(name=tool_name, description=purpose, args_schema=AssessArgs, coroutine=run,\n                               func=self._sync(run), tags=[tool_name],\n                               metadata={\"source\": ADAPTER_VERSION, \"peer\": peer,\n                                         \"peer_flow_id\": meta.get(\"peer_flow_id\")})]\n\n    @staticmethod\n    def _inner_field(inner) -> str:\n        schema = inner.args_schema\n        outer = getattr(schema, \"model_fields\", {}).get(\"flow_tweak_data\")\n        fields = getattr(outer.annotation, \"model_fields\", {}) if outer is not None else {}\n        names = [n for n in fields if n.endswith(\"~input_value\")]\n        if len(names) != 1:\n            raise ValueError(\"the Run Flow tool does not expose exactly one Chat Input text field\")\n        return names[0]\n\n    # ------------------------------------------------------------------ tool construction\n    @staticmethod\n    def _sync(coro_fn):\n        def run_sync(**kwargs):\n            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:\n                return ex.submit(lambda: asyncio.run(coro_fn(**kwargs))).result()\n        return run_sync\n\n    def _delegation_tools(self, ledger: _Ledger, conf: tuple) -> list:\n        tools = []\n        wired = {slot: getattr(self, slot, None) for slot, *_ in DELEGATIONS}\n        if self.expected_role != \"coordinator\":\n            if any(wired.values()):\n                raise ValueError(\"only the coordinator toolset may carry delegation tools\")\n            return tools\n        for slot, tool_name, flow_name, purpose in DELEGATIONS:\n            value = wired[slot]\n            inner_list = value if isinstance(value, list) else ([value] if value else [])\n            if len(inner_list) != 1:\n                raise ValueError(f\"connect exactly one Run Flow ({flow_name}) to '{slot}'\")\n            inner = inner_list[0]\n            expected = _norm(flow_name + \"_tool\")\n            if _norm(getattr(inner, \"name\", \"\")) != expected or flow_name not in (getattr(inner, \"description\", \"\") or \"\"):\n                raise ValueError(f\"'{slot}' accepts only the Run Flow tool for {flow_name}\")\n\n            run = self._delegation_fn(ledger, conf, slot, tool_name, inner)\n            tools.append(StructuredTool(name=tool_name, description=purpose, args_schema=DelegationArgs,\n                                        coroutine=run, func=self._sync(run), tags=[tool_name],\n                                        metadata={\"source\": ADAPTER_VERSION, \"flow\": flow_name}))\n        return tools\n\n    def _delegation_fn(self, ledger: _Ledger, conf: tuple, slot: str, tool_name: str, inner):\n        async def run(request: str) -> str:\n            return await self._delegate(ledger, conf, slot, tool_name, inner, request)\n        return run\n\n    def _mcp_fn(self, ledger: _Ledger, conf: tuple, name: str, read_only: bool):\n        async def run(**kwargs) -> str:\n            args = {k: (v.model_dump(exclude_none=True) if isinstance(v, BaseModel) else v)\n                    for k, v in kwargs.items() if v is not None}\n            return await self._call_mcp(ledger, conf, name, read_only, args)\n        return run\n\n    async def _get_tools(self) -> list:\n        base, workspace, token, run = self._config()\n        max_actions = max(1, min(8, int(self.max_actions)))\n        limit_s = max(5.0, min(180.0, float(self.invocation_timeout_s or 90)))\n        deadline_at = run.get(\"deadline_at\")\n        if isinstance(deadline_at, str):\n            from datetime import datetime\n            try:\n                run[\"deadline_epoch\"] = datetime.fromisoformat(deadline_at.replace(\"Z\", \"+00:00\")).timestamp()\n            except ValueError:\n                pass\n        ledger = _Ledger(run, max_actions, limit_s)\n        self._ts_ledger = ledger\n        conf = (base, workspace, token)\n        listed = await self._list_tools(base, workspace, token, run[\"run_id\"])\n        allowed = ALLOWLIST[self.expected_role]\n        tools = []\n        for t in listed:\n            if t.name not in allowed:\n                continue\n            schema = create_input_schema_from_json_schema(t.inputSchema or {\"type\": \"object\", \"properties\": {}})\n            read_only = bool(getattr(t.annotations, \"readOnlyHint\", False)) if t.annotations else False\n\n            run_tool = self._mcp_fn(ledger, conf, t.name, read_only)\n            tools.append(StructuredTool(name=t.name, description=(t.description or \"\")[:1000], args_schema=schema,\n                                        coroutine=run_tool, func=self._sync(run_tool), tags=[t.name],\n                                        metadata={\"source\": ADAPTER_VERSION, \"read_only\": read_only}))\n        tools += self._delegation_tools(ledger, conf)\n        tools += self._peer_tools(ledger, conf)\n        self.status = {\"adapter\": ADAPTER_VERSION, \"role\": self.expected_role, \"run_id\": run[\"run_id\"],\n                       \"tools\": [t.name for t in tools], \"max_actions\": max_actions,\n                       \"deadline_s\": round(ledger.remaining(), 1)}\n        return tools\n",
                 "fileTypes": [],
                 "file_path": "",
                 "password": false,
@@ -1838,7 +1882,8 @@
                   "product_owner",
                   "developer",
                   "qa",
-                  "coordinator"
+                  "coordinator",
+                  "operations"
                 ],
                 "options_metadata": [],
                 "combobox": false,
@@ -2013,7 +2058,7 @@
                 "_input_type": "MessageTextInput"
               }
             },
-            "description": "Trusted harness: exposes only this role's allowlisted TaskSprint MCP tools (fresh MCP session per call, bound to the Run Context's server-issued run) and, for the coordinator, three fixed specialist delegations, with action budgets, deadlines, depth and repair limits.",
+            "description": "Trusted harness: exposes only this role's allowlisted TaskSprint MCP tools (fresh MCP session per call, bound to the Run Context's server-issued run) and, for the coordinator, three fixed specialist delegations plus one fixed A2A assessment peer (TS-20), with action budgets, deadlines, depth and repair limits.",
             "icon": "shield-check",
             "base_classes": [
               "Tool"
@@ -2060,14 +2105,16 @@
               "delegation_timeout_s",
               "product_owner_flow",
               "developer_flow",
-              "qa_flow"
+              "qa_flow",
+              "operations_peer",
+              "a2a_timeout_s"
             ],
             "beta": false,
             "legacy": false,
             "edited": false,
             "metadata": {
               "module": "custom_components.tasksprint_bounded_toolset",
-              "code_hash": "05242b55ba19",
+              "code_hash": "a3775f7eb024",
               "dependencies": {
                 "total_dependencies": 6,
                 "dependencies": [
@@ -2106,7 +2153,7 @@
         },
         "measured": {
           "width": 320,
-          "height": 545
+          "height": 605
         }
       },
       {
@@ -2551,7 +2598,7 @@
               "is_refresh": false
             },
             "tool_mode": true,
-            "last_updated": "2026-10-20T12:37:19.349Z"
+            "last_updated": "2026-10-20T13:23:49.117Z"
           },
           "showNode": true,
           "type": "RunFlow",
@@ -3004,7 +3051,7 @@
               "is_refresh": false
             },
             "tool_mode": true,
-            "last_updated": "2026-10-20T12:37:19.350Z"
+            "last_updated": "2026-10-20T13:23:49.118Z"
           },
           "showNode": true,
           "type": "RunFlow",
@@ -3457,7 +3504,7 @@
               "is_refresh": false
             },
             "tool_mode": true,
-            "last_updated": "2026-10-20T12:37:19.351Z"
+            "last_updated": "2026-10-20T13:23:49.119Z"
           },
           "showNode": true,
           "type": "RunFlow",
@@ -3466,6 +3513,292 @@
         "measured": {
           "width": 320,
           "height": 407
+        }
+      },
+      {
+        "id": "TaskSprintA2AAudit-8pWdP",
+        "type": "genericNode",
+        "position": {
+          "x": 420,
+          "y": 520
+        },
+        "selected": false,
+        "data": {
+          "node": {
+            "template": {
+              "_type": "Component",
+              "api_base": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "api_base",
+                "value": "TASKSPRINT_API_BASE",
+                "display_name": "TaskSprint API base",
+                "advanced": true,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              },
+              "api_key": {
+                "load_from_db": true,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "api_key",
+                "value": "TS_A2A_API_KEY",
+                "display_name": "A2A API key",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [],
+                "dynamic": false,
+                "info": "Bind the Credential global TS_A2A_API_KEY (a Langflow API key). Never model-visible.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "password": true,
+                "type": "str",
+                "_input_type": "SecretStrInput"
+              },
+              "audit_token": {
+                "load_from_db": true,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "audit_token",
+                "value": "TS_COORD_TOKEN",
+                "display_name": "Coordinator token (audit)",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [],
+                "dynamic": false,
+                "info": "Bind TS_COORD_TOKEN: records the exchange in the lab (POST /v1/a2a-exchanges).",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "password": true,
+                "type": "str",
+                "_input_type": "SecretStrInput"
+              },
+              "card_url": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "card_url",
+                "value": "https://langflow-railway-production-f493.up.railway.app/api/v1/a2a/489890aa-4bd0-4641-b669-070f10e0922b/.well-known/agent-card.json",
+                "display_name": "Agent card URL (fixed peer)",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "The TS-20 Production Manager card URL exactly as its A2A pane shows it.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              },
+              "code": {
+                "type": "code",
+                "required": true,
+                "placeholder": "",
+                "list": false,
+                "show": true,
+                "multiline": true,
+                "value": "# TaskSprint A2A Audit: trusted Langflow custom component (Architecture A9, A10; Phase 08).\n# A thin audited adapter around a GENUINE A2A client (the a2a SDK that ships with Langflow 1.12, the same\n# client the native \"A2A Agent\" component uses). It exists because the native node returns only the reply\n# text and hides the protocol Task / context / message / artifact IDs that A10 requires us to capture.\n#\n# It calls exactly one fixed peer: the TS-20 Production Manager's published Agent Card (Langflow\n# /api/v1/a2a/<flow id>/.well-known/agent-card.json). The card's advertised protocolVersion and JSON-RPC url\n# are used as served; an off-origin or different-flow RPC url is refused. Authentication: the Langflow API\n# key from the Credential global TS_A2A_API_KEY, sent only as x-api-key to the card's own origin (never to\n# the model, never recorded). One message/send (non-streaming) carries the typed assess_release payload as an\n# application/json data part with contextId = the delegating coordinator run (lineage); then tasks/get reads\n# the task back from the peer's durable task store. The raw JSON-RPC bodies (no headers) and the result are\n# recorded in the TaskSprint lab (POST /v1/a2a-exchanges, coordinator credential), which derives the IDs,\n# links Operations' own runs and tool trace and verifies every quoted evidence ID.\n#\n# This component is NOT given to the Agent directly: its Toolset output is wired only into the TaskSprint\n# Bounded Toolset slot \"A2A peer: TS-20 Production Manager\", which exposes it to the coordinator as the\n# budgeted delegation `assess_release` with typed arguments. There is no task stub or simulated server:\n# on any failure it returns a structured error and no artifact.\n# Version 1.0.0. Source of truth: tasksprint-lab/components/a2a_audit.py\nfrom __future__ import annotations\n\nimport asyncio\nimport concurrent.futures\nimport json\nimport re\nimport time\nimport uuid\nfrom datetime import datetime, timezone\nfrom typing import Any\nfrom urllib.parse import urlparse\n\nimport anyio\nimport httpx\nfrom langchain_core.tools import StructuredTool\nfrom pydantic import BaseModel, Field\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import FloatInput, MessageTextInput, Output, SecretStrInput\n\nADAPTER_VERSION = \"a2a_audit/1.0.0\"\nPEER_TOOL_NAME = \"ts20_production_manager_a2a\"\nPEER_NAME = \"TS-20 Production Manager\"\nUUID_RE = r\"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"\nCARD_RE = re.compile(rf\"^https://([A-Za-z0-9.\\-]+)/api/v1/a2a/({UUID_RE})/\\.well-known/agent-card\\.json$\")\nRUN_RE = re.compile(r\"^run_[0-9a-f]{32}$\")\nWORKSPACE_RE = re.compile(r\"^[a-z0-9][a-z0-9-]{2,63}$\")\nMAX_CARD_BYTES = 256 * 1024\nMAX_BODY_CHARS = 12000\nCOMPLETED = \"TASK_STATE_COMPLETED\"\n\n\nclass PeerArgs(BaseModel):\n    payload_json: str = Field(..., max_length=4000, description=\"Serialized assess_release payload (trusted toolset).\")\n    parent_run_id: str = Field(..., pattern=r\"^run_[0-9a-f]{32}$\", description=\"Delegating coordinator run.\")\n\n\ndef _now() -> str:\n    return datetime.now(timezone.utc).isoformat(timespec=\"seconds\").replace(\"+00:00\", \"Z\")\n\n\ndef _clip_json(data: Any) -> Any:\n    text = json.dumps(data, default=str)\n    return data if len(text) <= MAX_BODY_CHARS else {\"_truncated_json\": text[:MAX_BODY_CHARS]}\n\n\nclass TaskSprintA2AAudit(Component):\n    display_name = \"TaskSprint A2A Audit\"\n    description = (\"Trusted adapter: calls the fixed TS-20 Production Manager A2A agent with the a2a SDK \"\n                   \"(message/send + tasks/get) and records the redacted exchange and lineage in the TaskSprint lab. \"\n                   \"Wire its Toolset only into the Bounded Toolset's A2A peer slot.\")\n    icon = \"bot\"\n    name = \"TaskSprintA2AAudit\"\n\n    inputs = [\n        MessageTextInput(name=\"card_url\", display_name=\"Agent card URL (fixed peer)\", value=\"\",\n                         info=\"The TS-20 Production Manager card URL exactly as its A2A pane shows it.\"),\n        MessageTextInput(name=\"peer_flow_id\", display_name=\"Peer flow ID\", value=\"\",\n                         info=\"The TS-20 flow id; the card URL and its RPC url must name this flow.\"),\n        SecretStrInput(name=\"api_key\", display_name=\"A2A API key\", value=\"\", load_from_db=True,\n                       info=\"Bind the Credential global TS_A2A_API_KEY (a Langflow API key). Never model-visible.\"),\n        SecretStrInput(name=\"audit_token\", display_name=\"Coordinator token (audit)\", value=\"\", load_from_db=True,\n                       info=\"Bind TS_COORD_TOKEN: records the exchange in the lab (POST /v1/a2a-exchanges).\"),\n        MessageTextInput(name=\"api_base\", display_name=\"TaskSprint API base\", value=\"TASKSPRINT_API_BASE\",\n                         load_from_db=True, advanced=True),\n        MessageTextInput(name=\"workspace\", display_name=\"Workspace\", value=\"demo-001\", advanced=True),\n        FloatInput(name=\"timeout_s\", display_name=\"Peer timeout (s)\", value=90.0, advanced=True),\n    ]\n    outputs = [Output(display_name=\"Toolset\", name=\"component_as_tool\", method=\"to_toolkit\", types=[\"Tool\"],\n                      cache=False)]\n\n    # ------------------------------------------------------------------ configuration\n    def _config(self) -> dict:\n        m = CARD_RE.match((self.card_url or \"\").strip())\n        peer = (self.peer_flow_id or \"\").strip()\n        if not m or m.group(2) != peer:\n            raise ValueError(\"card URL must be https://<host>/api/v1/a2a/<peer flow id>/.well-known/agent-card.json \"\n                             \"for the configured peer flow id\")\n        base = (self.api_base or \"\").strip().rstrip(\"/\")\n        u = urlparse(base)\n        if u.scheme != \"https\" or not u.hostname or u.path or u.query or u.fragment or u.username:\n            raise ValueError(\"TASKSPRINT_API_BASE must be an https origin without a path\")\n        if not WORKSPACE_RE.match((self.workspace or \"\").strip()):\n            raise ValueError(\"workspace id is invalid\")\n        if len(self.api_key or \"\") < 16:\n            raise ValueError(\"A2A API key is not bound (Credential global TS_A2A_API_KEY missing)\")\n        if len(self.audit_token or \"\") < 32:\n            raise ValueError(\"coordinator token is not bound (TS_COORD_TOKEN)\")\n        return {\"card_url\": self.card_url.strip(), \"host\": m.group(1), \"peer\": peer, \"origin\": f\"https://{m.group(1)}\",\n                \"lab\": base, \"workspace\": self.workspace.strip(),\n                \"timeout\": max(5.0, min(170.0, float(self.timeout_s or 90)))}\n\n    # ------------------------------------------------------------------ one audited exchange\n    async def _exchange(self, conf: dict, payload: dict, parent_run_id: str) -> dict:\n        from a2a.client.card_resolver import parse_agent_card\n        from a2a.client.client import ClientConfig\n        from a2a.client.client_factory import create_client\n        from a2a.helpers.proto_helpers import new_data_part\n        from a2a.types import a2a_pb2 as pb\n\n        http_log: list[dict] = []\n        wire: dict[str, Any] = {}\n        started = _now()\n        record: dict[str, Any] = {\"outcome\": \"not_sent\", \"task\": None, \"task_get\": None, \"error\": None,\n                                  \"protocol_version\": None, \"transport\": None}\n\n        async def on_request(request: httpx.Request) -> None:\n            if (request.url.scheme, request.url.host) != (\"https\", conf[\"host\"]):\n                raise httpx.UnsupportedProtocol(\"refusing a request outside the fixed peer origin\")\n            request.extensions[\"ts_started\"] = time.monotonic()\n\n        async def on_response(response: httpx.Response) -> None:\n            await response.aread()\n            req = response.request\n            entry: dict[str, Any] = {\"http_method\": req.method, \"path\": req.url.path, \"status\": response.status_code,\n                                     \"elapsed_ms\": int((time.monotonic() - req.extensions.get(\"ts_started\",\n                                                                                              time.monotonic())) * 1000)}\n            if req.method == \"POST\":\n                try:\n                    body = json.loads(req.content or b\"{}\")\n                    entry[\"rpc_method\"] = body.get(\"method\")\n                    entry[\"request\"] = _clip_json(body)\n                except ValueError:\n                    entry[\"request\"] = None\n                try:\n                    rbody = response.json()\n                    if isinstance(rbody, dict) and \"result\" in rbody:  # stored in full as task / task_get\n                        entry[\"response\"] = {\"jsonrpc\": rbody.get(\"jsonrpc\"), \"id\": rbody.get(\"id\"),\n                                             \"result\": \"(recorded as task / task_get)\"}\n                    else:\n                        entry[\"response\"] = _clip_json(rbody)\n                    if entry.get(\"rpc_method\") and isinstance(rbody, dict):\n                        wire[entry[\"rpc_method\"]] = rbody\n                except ValueError:\n                    entry[\"response\"] = response.text[:500]\n            elif req.url.path.endswith(\"/agent-card.json\") and response.status_code == 200:\n                try:\n                    card = response.json()\n                    entry[\"card\"] = {k: card.get(k) for k in (\"name\", \"protocolVersion\", \"url\", \"preferredTransport\",\n                                                              \"version\", \"security\")}\n                except ValueError:\n                    entry[\"card\"] = None\n            http_log.append(entry)\n\n        client_http = httpx.AsyncClient(timeout=httpx.Timeout(conf[\"timeout\"]), follow_redirects=False,\n                                        headers={\"x-api-key\": self.api_key},\n                                        event_hooks={\"request\": [on_request], \"response\": [on_response]})\n        try:\n            async with client_http:\n                resp = await client_http.get(conf[\"card_url\"])\n                if resp.status_code != 200 or len(resp.content) > MAX_CARD_BYTES:\n                    record.update(outcome=\"unreachable\", error={\n                        \"code\": \"PEER_UNAVAILABLE\", \"message\": f\"agent card answered HTTP {resp.status_code}; the peer \"\n                        \"is not published or not reachable. No task was sent.\"})\n                    return {**record, \"http\": http_log, \"started_at\": started, \"finished_at\": _now()}\n                card_json = resp.json()\n                record[\"protocol_version\"] = card_json.get(\"protocolVersion\")\n                record[\"transport\"] = card_json.get(\"preferredTransport\") or \"JSONRPC\"\n                rpc = urlparse(str(card_json.get(\"url\", \"\")))\n                if rpc.scheme == \"http\" and rpc.hostname == conf[\"host\"] and not rpc.port:\n                    # Observed on Railway: Langflow sits behind a TLS-terminating proxy and builds the card's url\n                    # from the plain-HTTP request it receives, so the card advertises http:// for an https-only\n                    # host (the edge answers http with 301). The key must never travel in cleartext: keep the\n                    # advertised host, path and transport, use https, and record that the scheme was upgraded.\n                    record[\"rpc_url_advertised\"] = card_json[\"url\"]\n                    card_json = {**card_json, \"url\": \"https://\" + str(card_json[\"url\"])[len(\"http://\"):]}\n                    rpc = urlparse(card_json[\"url\"])\n                    if http_log and \"card\" in http_log[-1]:\n                        http_log[-1][\"card\"][\"scheme_upgraded_to_https\"] = True\n                if (rpc.scheme, rpc.hostname, rpc.path) != (\"https\", conf[\"host\"],\n                                                            f\"/api/v1/a2a/{conf['peer']}/jsonrpc\"):\n                    record.update(outcome=\"protocol_error\", error={\n                        \"code\": \"PEER_CARD_MISMATCH\", \"message\": \"the card advertises an RPC url other than the fixed \"\n                        \"peer's own JSON-RPC endpoint; refused\"})\n                    return {**record, \"http\": http_log, \"started_at\": started, \"finished_at\": _now()}\n                card = parse_agent_card(card_json)\n                client = await create_client(card, client_config=ClientConfig(\n                    streaming=False, httpx_client=client_http, accepted_output_modes=[\"application/json\"]))\n                message = pb.Message(message_id=uuid.uuid4().hex, context_id=parent_run_id, role=pb.Role.ROLE_USER,\n                                     parts=[new_data_part(payload, media_type=\"application/json\")])\n                final = None\n                with anyio.fail_after(conf[\"timeout\"]):\n                    async for item in client.send_message(pb.SendMessageRequest(message=message)):\n                        if item.HasField(\"task\"):\n                            final = item.task\n                record[\"outcome\"] = \"protocol_error\"\n                if final is None:\n                    record[\"error\"] = {\"code\": \"PEER_NO_TASK\", \"message\": \"the peer returned no Task\"}\n                else:\n                    with anyio.fail_after(30):\n                        await client.get_task(pb.GetTaskRequest(id=final.id))\n                    state = pb.TaskState.Name(final.status.state)\n                    if state == COMPLETED:\n                        record[\"outcome\"] = \"completed\"\n                    else:\n                        record.update(outcome=\"failed\", error={\"code\": \"PEER_TASK_NOT_COMPLETED\",\n                                                               \"message\": f\"peer task ended {state}\"})\n        except TimeoutError:\n            record.update(outcome=\"timeout\", error={\"code\": \"PEER_TIMEOUT\", \"message\": f\"no answer within \"\n                          f\"{conf['timeout']:.0f} s; the peer task may still finish. Nothing was released.\"})\n        except Exception as exc:  # noqa: BLE001 - becomes a structured, recorded failure\n            statuses = [h[\"status\"] for h in http_log]\n            if 401 in statuses or 403 in statuses:\n                record.update(outcome=\"unauthorized\", error={\"code\": \"PEER_UNAUTHORIZED\",\n                                                             \"message\": \"the peer rejected the A2A credential\"})\n            elif 404 in statuses:\n                record.update(outcome=\"unreachable\", error={\"code\": \"PEER_UNAVAILABLE\",\n                                                            \"message\": \"the peer endpoint answered 404\"})\n            else:\n                record.update(outcome=\"protocol_error\" if record[\"outcome\"] != \"not_sent\" else \"unreachable\",\n                              error={\"code\": \"PEER_ERROR\", \"message\": f\"{type(exc).__name__}: {str(exc)[:200]}\"})\n        sent = (wire.get(\"message/send\") or {}).get(\"result\")\n        got = (wire.get(\"tasks/get\") or {}).get(\"result\")\n        record[\"task\"] = sent if isinstance(sent, dict) else None\n        record[\"task_get\"] = got if isinstance(got, dict) else None\n        if record[\"outcome\"] == \"completed\" and record[\"task\"] is None:\n            record.update(outcome=\"protocol_error\", error={\"code\": \"PEER_WIRE_UNREADABLE\",\n                                                           \"message\": \"could not read the raw message/send result\"})\n        return {**record, \"http\": http_log, \"started_at\": started, \"finished_at\": _now()}\n\n    async def _record(self, conf: dict, payload: dict, parent_run_id: str, ex: dict) -> dict:\n        body = {\"parent_run_id\": parent_run_id, \"peer_flow_id\": conf[\"peer\"], \"card_url\": conf[\"card_url\"],\n                \"protocol_version\": ex[\"protocol_version\"], \"transport\": ex[\"transport\"],\n                \"adapter_version\": ADAPTER_VERSION, \"request\": payload, \"outcome\": ex[\"outcome\"],\n                \"task\": ex[\"task\"], \"task_get\": ex[\"task_get\"], \"http\": ex[\"http\"][:12], \"error\": ex[\"error\"],\n                \"started_at\": ex[\"started_at\"], \"finished_at\": ex[\"finished_at\"]}\n        try:\n            async with httpx.AsyncClient(timeout=20.0, follow_redirects=False) as lab:\n                r = await lab.post(conf[\"lab\"] + \"/v1/a2a-exchanges\", json=body, headers={\n                    \"Authorization\": f\"Bearer {self.audit_token}\", \"X-TaskSprint-Workspace\": conf[\"workspace\"],\n                    \"User-Agent\": ADAPTER_VERSION})\n            data = r.json()\n        except (httpx.HTTPError, ValueError) as exc:\n            return {\"recorded\": False, \"error\": {\"code\": \"AUDIT_UNREACHABLE\", \"message\": type(exc).__name__}}\n        if r.status_code != 201:\n            return {\"recorded\": False, \"error\": (data.get(\"error\") or {\"code\": f\"HTTP_{r.status_code}\"})}\n        return {\"recorded\": True, **data}\n\n    async def _call(self, payload_json: str, parent_run_id: str) -> str:\n        conf = self._config()\n        if not RUN_RE.match(parent_run_id or \"\"):\n            return json.dumps({\"error\": {\"code\": \"BAD_PARENT_RUN\", \"source\": \"adapter\"}})\n        try:\n            payload = json.loads(payload_json)\n        except ValueError:\n            return json.dumps({\"error\": {\"code\": \"BAD_PAYLOAD\", \"source\": \"adapter\"}})\n        if not isinstance(payload, dict) or payload.get(\"intent\") != \"assess_release\" or \\\n                payload.get(\"allow_execute\") is not False:\n            return json.dumps({\"error\": {\"code\": \"BAD_PAYLOAD\", \"source\": \"adapter\",\n                                         \"message\": \"only an assess_release payload with allow_execute=false\"}})\n        ex = await self._exchange(conf, payload, parent_run_id)\n        audit = await self._record(conf, payload, parent_run_id, ex)\n        texts = []\n        if ex[\"outcome\"] == \"completed\":\n            for a in (ex[\"task\"] or {}).get(\"artifacts\") or []:\n                for p in a.get(\"parts\") or []:\n                    if isinstance(p, dict) and isinstance(p.get(\"text\"), str):\n                        texts.append(p[\"text\"])\n        out: dict[str, Any] = {\n            \"peer\": PEER_NAME, \"outcome\": ex[\"outcome\"], \"protocol_version\": ex[\"protocol_version\"],\n            \"rpc_url_scheme_upgraded\": bool(ex.get(\"rpc_url_advertised\")),\n            \"protocol\": audit.get(\"protocol\") if audit.get(\"recorded\") else {\n                \"task_id\": (ex[\"task\"] or {}).get(\"id\"), \"context_id\": (ex[\"task\"] or {}).get(\"contextId\")},\n            \"error\": ex[\"error\"],\n            \"operations_artifact\": \"\\n\".join(texts)[:5000] if texts else None,\n            \"audit\": {\"recorded\": audit.get(\"recorded\"), \"exchange_id\": audit.get(\"exchange_id\"),\n                      \"event_id\": audit.get(\"event_id\"), \"error\": audit.get(\"error\"),\n                      \"linked_evidence\": audit.get(\"linked_evidence\"),\n                      \"operations_runs\": [{\"run_id\": p[\"run_id\"], \"tools\": [t.get(\"tool\") or t[\"action\"]\n                                                                            for t in p[\"tool_trace\"]]}\n                                          for p in audit.get(\"peer_runs\") or []]},\n            \"note\": (\"The artifact is Operations' assessment. It is not an approval and nothing was deployed. \"\n                     \"Evidence IDs marked exists=false in linked_evidence are not backed by lab records.\"),\n        }\n        if ex[\"outcome\"] == \"completed\" and not audit.get(\"recorded\"):\n            out[\"error\"] = {\"code\": \"AUDIT_NOT_RECORDED\", \"message\": \"the exchange could not be recorded; treat the \"\n                            \"assessment as unverified and escalate\"}\n        return json.dumps(out, sort_keys=True, default=str)\n\n    @staticmethod\n    def _sync(coro_fn):\n        def run_sync(**kwargs):\n            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:\n                return ex.submit(lambda: asyncio.run(coro_fn(**kwargs))).result()\n        return run_sync\n\n    async def _get_tools(self) -> list:\n        conf = self._config()\n\n        async def run(payload_json: str, parent_run_id: str) -> str:\n            return await self._call(payload_json, parent_run_id)\n\n        self.status = {\"adapter\": ADAPTER_VERSION, \"peer\": PEER_NAME, \"peer_flow_id\": conf[\"peer\"],\n                       \"card_url\": conf[\"card_url\"]}\n        return [StructuredTool(name=PEER_TOOL_NAME, description=f\"Internal A2A peer call to {PEER_NAME} (wire into \"\n                               \"the TaskSprint Bounded Toolset only).\", args_schema=PeerArgs, coroutine=run,\n                               func=self._sync(run), tags=[PEER_TOOL_NAME],\n                               metadata={\"source\": ADAPTER_VERSION, \"peer_flow_id\": conf[\"peer\"]})]\n",
+                "fileTypes": [],
+                "file_path": "",
+                "password": false,
+                "name": "code",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "info": "",
+                "load_from_db": false,
+                "title_case": false
+              },
+              "peer_flow_id": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "peer_flow_id",
+                "value": "489890aa-4bd0-4641-b669-070f10e0922b",
+                "display_name": "Peer flow ID",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "The TS-20 flow id; the card URL and its RPC url must name this flow.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              },
+              "timeout_s": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "timeout_s",
+                "value": 90,
+                "display_name": "Peer timeout (s)",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": true,
+                "type": "float",
+                "_input_type": "FloatInput"
+              },
+              "workspace": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "workspace",
+                "value": "demo-001",
+                "display_name": "Workspace",
+                "advanced": true,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              }
+            },
+            "description": "Trusted adapter: calls the fixed TS-20 Production Manager A2A agent with the a2a SDK (message/send + tasks/get) and records the redacted exchange and lineage in the TaskSprint lab. Wire its Toolset only into the Bounded Toolset's A2A peer slot.",
+            "icon": "bot",
+            "base_classes": [
+              "Tool"
+            ],
+            "display_name": "TaskSprint A2A Audit",
+            "documentation": "",
+            "minimized": false,
+            "custom_fields": {},
+            "output_types": [],
+            "pinned": false,
+            "conditional_paths": [],
+            "frozen": false,
+            "outputs": [
+              {
+                "types": [
+                  "Tool"
+                ],
+                "selected": "Tool",
+                "name": "component_as_tool",
+                "hidden": null,
+                "display_name": "Toolset",
+                "method": "to_toolkit",
+                "value": "__UNDEFINED__",
+                "cache": false,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": false,
+                "options": null,
+                "tool_mode": true
+              }
+            ],
+            "field_order": [
+              "card_url",
+              "peer_flow_id",
+              "api_key",
+              "audit_token",
+              "api_base",
+              "workspace",
+              "timeout_s"
+            ],
+            "beta": false,
+            "legacy": false,
+            "edited": false,
+            "metadata": {
+              "module": "custom_components.tasksprint_a2a_audit",
+              "code_hash": "733827ff913d",
+              "dependencies": {
+                "total_dependencies": 6,
+                "dependencies": [
+                  {
+                    "name": "anyio",
+                    "version": "4.14.2"
+                  },
+                  {
+                    "name": "httpx",
+                    "version": "0.28.1"
+                  },
+                  {
+                    "name": "langchain_core",
+                    "version": "1.5.1"
+                  },
+                  {
+                    "name": "pydantic",
+                    "version": "2.13.4"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": "1.12.5"
+                  },
+                  {
+                    "name": "a2a",
+                    "version": "1.2.1"
+                  }
+                ]
+              }
+            },
+            "tool_mode": false
+          },
+          "showNode": true,
+          "type": "TaskSprintA2AAudit",
+          "id": "TaskSprintA2AAudit-8pWdP"
+        },
+        "measured": {
+          "width": 320,
+          "height": 533
         }
       }
     ],
@@ -3782,12 +4115,40 @@
         "selected": false,
         "animated": false,
         "className": ""
+      },
+      {
+        "source": "TaskSprintA2AAudit-8pWdP",
+        "sourceHandle": "{œdataTypeœ:œTaskSprintA2AAuditœ,œidœ:œTaskSprintA2AAudit-8pWdPœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
+        "target": "TaskSprintBoundedToolset-YSLSR",
+        "targetHandle": "{œfieldNameœ:œoperations_peerœ,œidœ:œTaskSprintBoundedToolset-YSLSRœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
+        "data": {
+          "targetHandle": {
+            "fieldName": "operations_peer",
+            "id": "TaskSprintBoundedToolset-YSLSR",
+            "inputTypes": [
+              "Tool"
+            ],
+            "type": "other"
+          },
+          "sourceHandle": {
+            "dataType": "TaskSprintA2AAudit",
+            "id": "TaskSprintA2AAudit-8pWdP",
+            "name": "component_as_tool",
+            "output_types": [
+              "Tool"
+            ]
+          }
+        },
+        "id": "xy-edge__TaskSprintA2AAudit-8pWdP{œdataTypeœ:œTaskSprintA2AAuditœ,œidœ:œTaskSprintA2AAudit-8pWdPœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}-TaskSprintBoundedToolset-YSLSR{œfieldNameœ:œoperations_peerœ,œidœ:œTaskSprintBoundedToolset-YSLSRœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "animated": false,
+        "className": ""
       }
     ],
     "viewport": {
-      "x": 241.15782747603834,
-      "y": 428.6773162939297,
-      "zoom": 0.45878594249201277
+      "x": 288.6023166023166,
+      "y": 380.98179812465526,
+      "zoom": 0.39602868174296746
     }
   },
   "is_component": false,

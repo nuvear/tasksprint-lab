@@ -177,6 +177,16 @@ class TaskSprintA2AAudit(Component):
                 record["protocol_version"] = card_json.get("protocolVersion")
                 record["transport"] = card_json.get("preferredTransport") or "JSONRPC"
                 rpc = urlparse(str(card_json.get("url", "")))
+                if rpc.scheme == "http" and rpc.hostname == conf["host"] and not rpc.port:
+                    # Observed on Railway: Langflow sits behind a TLS-terminating proxy and builds the card's url
+                    # from the plain-HTTP request it receives, so the card advertises http:// for an https-only
+                    # host (the edge answers http with 301). The key must never travel in cleartext: keep the
+                    # advertised host, path and transport, use https, and record that the scheme was upgraded.
+                    record["rpc_url_advertised"] = card_json["url"]
+                    card_json = {**card_json, "url": "https://" + str(card_json["url"])[len("http://"):]}
+                    rpc = urlparse(card_json["url"])
+                    if http_log and "card" in http_log[-1]:
+                        http_log[-1]["card"]["scheme_upgraded_to_https"] = True
                 if (rpc.scheme, rpc.hostname, rpc.path) != ("https", conf["host"],
                                                             f"/api/v1/a2a/{conf['peer']}/jsonrpc"):
                     record.update(outcome="protocol_error", error={
@@ -268,6 +278,7 @@ class TaskSprintA2AAudit(Component):
                         texts.append(p["text"])
         out: dict[str, Any] = {
             "peer": PEER_NAME, "outcome": ex["outcome"], "protocol_version": ex["protocol_version"],
+            "rpc_url_scheme_upgraded": bool(ex.get("rpc_url_advertised")),
             "protocol": audit.get("protocol") if audit.get("recorded") else {
                 "task_id": (ex["task"] or {}).get("id"), "context_id": (ex["task"] or {}).get("contextId")},
             "error": ex["error"],

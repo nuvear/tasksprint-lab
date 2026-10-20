@@ -48,8 +48,10 @@ def test_delegations_point_only_at_the_three_specialists():
     text = TOOLSET.read_text(encoding="utf-8")
     assert "TS-90" not in text
     peer = _constant(_module(TOOLSET), "A2A_PEER")
-    assert peer[:4] == ("operations_peer", "assess_release", "TS-20 Production Manager", "ts20_production_manager_a2a")
+    assert peer[:4] == ("operations_peer", "assess_production_release", "TS-20 Production Manager", "ts20_production_manager_a2a")
     assert _constant(_module(TOOLSET), "A2A_PAYLOAD_SCHEMA_VERSION") == "1.1"
+    # the tool name is the one the supplied coordinator prompt uses
+    assert "assess_production_release" in (REPO_ROOT / "prompts/coordinator.md").read_text(encoding="utf-8")
 
 
 def test_a2a_payload_built_by_the_toolset_matches_the_contract():

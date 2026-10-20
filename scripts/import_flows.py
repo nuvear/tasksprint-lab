@@ -51,7 +51,9 @@ FLOWS = (
      "tasksprint-product-owner"),
     ("02_developer.json", "TS-02 Developer", "agent", "developer.md", "TS_DEV_TOKEN", "tasksprint-developer"),
     ("03_qa.json", "TS-03 QA", "agent", "qa.md", "TS_QA_TOKEN", "tasksprint-qa"),
-    # Phase 07: built by scripts/phase07_flows.py; listed here for export and re-import (after 01-03).
+    # Phase 08: built by scripts/phase08_flows.py; published as an A2A agent in the editor's Agent pane.
+    ("20_operations.json", "TS-20 Production Manager", "agent", "operations.md", "TS_OPS_TOKEN", None),
+    # Phase 07: built by scripts/phase07_flows.py; listed here for export and re-import (after 01-03, 20).
     ("10_sprint_room.json", "TS-10 Sprint Room", "sprint", "coordinator.md", "TS_COORD_TOKEN", None),
 )
 DESCRIPTIONS = {
@@ -59,8 +61,14 @@ DESCRIPTIONS = {
     "TS-01 Product Owner": "TaskSprint Phase 07: Product Owner specialist agent (bounded product_owner toolset).",
     "TS-02 Developer": "TaskSprint Phase 07: Developer specialist agent (bounded developer toolset).",
     "TS-03 QA": "TaskSprint Phase 07: QA specialist agent (bounded qa toolset).",
-    "TS-10 Sprint Room": "TaskSprint Phase 07: Scrum Coordinator agent with three bounded specialist delegations.",
+    "TS-10 Sprint Room": ("TaskSprint Phase 08: Scrum Coordinator agent with three bounded specialist delegations and "
+                          "one A2A assessment peer (TS-20)."),
+    "TS-20 Production Manager": ("TaskSprint Production Manager (Operations agent). Assesses a release of the synthetic "
+                                 "demo-production to-do app from its own evidence and returns a canonical release plan "
+                                 "reference or a blocked assessment. Assessment never deploys; a human approves plans "
+                                 "separately."),
 }
+A2A_PEER_FLOW = "TS-20 Production Manager"
 ALLOWED_RUN_FLOW_TARGETS = ("TS-01 Product Owner", "TS-02 Developer", "TS-03 QA")
 SECRET_PATTERNS = [re.compile(p) for p in (
     r"sk-[A-Za-z0-9_-]{16,}", r"sk-ant-[A-Za-z0-9_-]{16,}", r"AKIA[0-9A-Z]{16}", r"xox[abpr]-[A-Za-z0-9-]{10,}",
@@ -167,6 +175,20 @@ def remap_run_flows(data: dict, existing: dict[str, dict]) -> None:
         if target not in existing:
             raise SetupError(f"Run Flow target {target!r} must be imported first")
         tpl["flow_id_selected"]["value"] = existing[target]["id"]
+
+
+def remap_a2a_peer(data: dict, existing: dict[str, dict], base_url: str) -> None:
+    """Point the Sprint Room's TaskSprint A2A Audit node at THIS instance's TS-20 card (ids differ per instance).
+    Only the fixed TS-20 peer is accepted (Architecture A10: a fixed peer, no generic any-agent A2A tool)."""
+    for n in data["nodes"]:
+        if n["data"]["type"] != "TaskSprintA2AAudit":
+            continue
+        if A2A_PEER_FLOW not in existing:
+            raise SetupError(f"{A2A_PEER_FLOW} must be imported (and published) before the Sprint Room")
+        peer = existing[A2A_PEER_FLOW]["id"]
+        tpl = n["data"]["node"]["template"]
+        tpl["peer_flow_id"]["value"] = peer
+        tpl["card_url"]["value"] = f"{base_url.rstrip('/')}/api/v1/a2a/{peer}/.well-known/agent-card.json"
 
 
 def build_skeleton(c, name: str, kind: str, prompt: str | None, var: str) -> dict:
@@ -280,6 +302,7 @@ def main(argv: list[str] | None = None) -> int:
                         raise SetupError(f"flows/{fname} has name {doc.get('name')!r}, expected {name!r}")
                     data = doc["data"]
                     remap_run_flows(data, existing)
+                    remap_a2a_peer(data, existing, a.langflow_url)
                 else:
                     data = build_skeleton(c, name, kind, prompt, var)
                 b = bindings(data)

@@ -9,7 +9,8 @@
 # any limit: limits are component inputs, never tool arguments. The lab enforces the same budgets
 # independently (8 actions per run, 24 per run tree, depth 2, 90 s / 180 s deadlines).
 # 1.1.0 (Phase 08): the operations role (TS-20 Production Manager) and, for the coordinator, one fixed A2A
-# delegation `assess_release`, which accepts only the TaskSprint A2A Audit adapter's peer tool. The toolset
+# delegation `assess_production_release` (the name prompts/coordinator.md uses; it carries
+# the typed assess_release task), which accepts only the TaskSprint A2A Audit adapter's peer tool. The toolset
 # (not the model) builds the typed assess_release payload from contracts/handoff-task.schema.json 1.1, counts
 # the delegation as one action charged to the parent run, allows it once per turn and passes the parent run
 # as the A2A contextId (lineage). The model supplies only the three evidence references.
@@ -65,7 +66,7 @@ DELEGATIONS: tuple[tuple[str, str, str, str], ...] = (
 )
 # The one A2A delegation (coordinator only): slot, tool name, peer, the adapter tool it accepts, purpose.
 A2A_PEER: tuple[str, str, str, str, str] = (
-    "operations_peer", "assess_release", "TS-20 Production Manager", "ts20_production_manager_a2a",
+    "operations_peer", "assess_production_release", "TS-20 Production Manager", "ts20_production_manager_a2a",
     "Ask the independent Production Manager (TS-20, over A2A) to ASSESS a release of one exact tested candidate. "
     "Give the candidate ID, its sha256 and the passing protected test report ID. Operations fetches its own "
     "evidence and returns a release plan reference or a blocked assessment. This never deploys and is not an "
@@ -128,7 +129,8 @@ class TaskSprintBoundedToolset(Component):
     display_name = "TaskSprint Bounded Toolset"
     description = ("Trusted harness: exposes only this role's allowlisted TaskSprint MCP tools (fresh MCP session per "
                    "call, bound to the Run Context's server-issued run) and, for the coordinator, three fixed "
-                   "specialist delegations, with action budgets, deadlines, depth and repair limits.")
+                   "specialist delegations plus one fixed A2A assessment peer (TS-20), with action budgets, "
+                   "deadlines, depth and repair limits.")
     icon = "shield-check"
     name = "TaskSprintBoundedToolset"
 
@@ -378,7 +380,7 @@ class TaskSprintBoundedToolset(Component):
             return self._refuse(ledger, tool_name, "DELEGATION_DEPTH_EXCEEDED",
                                 f"delegation depth would exceed {self.max_depth}", terminal=False)
         if ledger.delegations.get(tool_name, 0) >= 1:
-            return self._refuse(ledger, tool_name, "DELEGATION_LIMIT", "assess_release was already used this turn; "
+            return self._refuse(ledger, tool_name, "DELEGATION_LIMIT", "assess_production_release was already used this turn; "
                                 "report its result or escalate to the human", terminal=False)
         ledger.actions += 1
         try:
