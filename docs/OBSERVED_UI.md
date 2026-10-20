@@ -68,3 +68,65 @@ Note: the guide text says "Settings → API Keys"; the actual label is
 | Flow-level A2A publication controls (`flow_type=agent`, `a2a_enabled`) in the UI | Schema fields exist (`FlowCreate.flow_type` enum `workflow`/`agent`, `a2a_enabled`, `a2a_card_overrides`); UI location unknown; server flag off |
 | Human Input pause/resume behaviour and persistence scope | Only routes observed (`/api/v2/workflows/pending`, `/resume`) |
 | Variables / API-key REST routes | Absent from OpenAPI; UI pages exist |
+
+
+## Phase 01 additions — flow editor (20 Oct 2026, 04:49–05:06 UTC)
+
+Observed in the owner's Chrome while building `TS-00 Connection Check` and
+`TS-00T Templates`. Screenshots `01-01` … `01-31`. Field-level detail:
+`langflow/COMPONENT_MAP.md`.
+
+- **Create first flow** opens a new flow named **New Flow** directly, showing an
+  assistant prompt **What do you want to build?** (model chip `claude-sonnet-5-5`),
+  **Or start from a template:** **Simple Agent**, **Vector Store RAG**, **Browse more...**
+  over an empty canvas. There is no separate "blank flow" choice. (`01-01`)
+- Rename: click the flow name → popover **Name**, **Description**, **Lock Flow**,
+  **Cancel**/**Save**; toast **Changes saved successfully**.
+- Editor left rail (tooltips/labels): **Components**, **MCP**, **Bundles**, **Versions**,
+  **Agent**, **Memories**, **Traces**. Components search box **Search** with `/` shortcut;
+  filter icon reveals **Show Beta** (on) and **Show Legacy** (off). (`01-23`)
+- Component categories: **Input & Output**, **Data Sources**, **Models & Agents**,
+  **LLM Operations**, **Files & Knowledge**, **Processing**, **Flow Control**,
+  **Utilities**, **Discover more components**, footer **New Custom Component**.
+- Present: **Agent**, **A2A Agent**, **Human Input**, **Run Flow** (Beta), **Chat Input**,
+  **Chat Output**, **Prompt Template**, **Language Model**, **Message History**, **API
+  Request**, **Python Interpreter**, **If-Else**, **Loop**, **Structured Output**,
+  **Guardrails**. Legacy only: **Text Input**, **Text Output**, **Condition…**.
+  **MCP Tools: not in the catalog**; MCP rail shows **No MCP Servers Added** /
+  **Add MCP Server**. (`01-15`, `01-16`, `01-24`)
+- Agent node: **Language Model*** (one dropdown grouped **Anthropic** / **OpenAI**, footer
+  **Refresh List**, **Manage Model Providers**), **Agent Instructions** (expand →
+  **Edit text content** / **Finish Editing**), **Tools** handle, **Input**, output
+  **Response**. Hover toolbar **Code | Parameters | Tool Mode | …**. **Parameters** opens
+  **Component Parameters** ("Adjust component parameter visibility and define API
+  inputs.") with **API** and **+ Add**/**Remove** per field. (`01-04`, `01-05`, `01-10`, `01-11`)
+- Playground: **Sessions** / **Default Session**; reply header **AI**, **Finished in**,
+  token count and seconds. (`01-09`)
+- Share menu: **API access**, **Export**, **MCP Server**, **Embed into site**,
+  **Shareable Playground** (toggle). API access shows `YOUR_API_KEY_HERE` placeholder,
+  tabs **v1** / **v2 BETA**, **Python** / **JavaScript** / **cURL**. Export dialog:
+  **Save with my API keys** (unchecked) + caution text. (`01-12` – `01-14`)
+- A2A pane (rail **Agent**): banner **A2A is turned off on this server. Set
+  LANGFLOW_A2A_ENABLED=true to publish and test agents.**; **Serve as an A2A agent**
+  toggle **Off** ("Off. Nobody can reach it yet."); **Address** **URL** / **curl**;
+  **Customize card** (Name, Version, Description, Tags, Examples, **Save**); **Try it**
+  "A2A is off on this server, so there is nothing to call yet." (`01-17`, `01-18`)
+- Traces rail → **Flow Activity** table (Run, Trace ID, Timestamp, Input, Output, Token,
+  Latency, Status). Memories rail → **Memories**, **+ Create**. Versions rail →
+  **Version History**, "Save a version of your flow" / **Keep Building** / **Save**.
+- Global-variable picker: globe icon on text fields → search **Global Variables**;
+  names now include `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` (created by Model Providers
+  setup) besides the four Phase 00 names. Values not shown. (`01-27`)
+- Flows list row menu: **Edit details**, **Export**, **Duplicate**, **Delete**; toast
+  **Flow duplicated successfully**; duplicate named `TS-00 Connection Check (1)`. (`01-29`, `01-30`)
+
+### Phase 00 unknowns now resolved
+
+| Item | Result |
+|---|---|
+| Component availability | Present except MCP Tools (needs a registered MCP server) |
+| Type names, fields, handles | `langflow/COMPONENT_MAP.md`, `langflow/templates/*.partial.json` |
+| Agent model selection | Single grouped **Language Model** dropdown; value is a list with `{name, provider, metadata}` |
+| Flow-level A2A controls | Rail **Agent** pane, **Serve as an A2A agent** toggle (disabled by server flag) |
+| Global-variable binding syntax in JSON | Still UNKNOWN (no field was bound) |
+| Human Input pause/resume, persistence | Source read only; not executed (Phase 09) |

@@ -1,0 +1,2311 @@
+{
+  "_capture": {
+    "captured_from": "GET /api/v1/flows/{id} in the owner's signed-in Chrome (cookie session), Langflow 1.12.5, 2026-10-20",
+    "status": "PARTIAL / STRUCTURAL - NOT a byte-identical export and NOT directly importable",
+    "why_partial": "The browser text extractor returns at most 50,000 characters; the flow JSON was 155,695 characters. The remainder was read from on-screen zoomed views. Component source code (template.code.value) is replaced by a placeholder naming module + code_hash. Some low-value attributes on Agent fields may be omitted; every field name, handle, type, input_types, and edge string was checked against the live response. For this flow, Chat Input / Chat Output / Agent code_hash values match TS-00 (same installed components); their attribute dicts are reused from the TS-00 capture. RunFlow dynamic target fields are summarised in _dynamic_target_fields_note.",
+    "secrets": "No credential values present in the live response: SecretStrInput fields (api_key) had value \"\". Provider keys live in Model Providers / global variables, not in the flow.",
+    "how_to_get_a_true_export": "Owner: flow row menu > Export (leave 'Save with my API keys' unchecked), or Phase-04 script GET /api/v1/flows/{id} with the bootstrap key, then run the credential scan."
+  },
+  "name": "TS-00T Templates",
+  "description": "Chain the Words, Master Language!",
+  "icon": null,
+  "icon_bg_color": null,
+  "gradient": null,
+  "data": {
+    "nodes": [
+      {
+        "id": "HumanInput-MhFhf",
+        "type": "genericNode",
+        "position": {
+          "x": 42,
+          "y": 63
+        },
+        "data": {
+          "node": {
+            "base_classes": [
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Pause the flow for a human-in-the-loop (HITL) decision and route on the chosen action.",
+            "display_name": "Human Input",
+            "documentation": "",
+            "edited": false,
+            "field_order": [
+              "prompt",
+              "decisions",
+              "timeout",
+              "enable_fallback"
+            ],
+            "frozen": false,
+            "icon": "HumanInput",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "63cbbf99823f",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 1
+              },
+              "keywords": [
+                "hitl",
+                "human-in-the-loop",
+                "decision"
+              ],
+              "module": "lfx.components.flow_controls.human_input.HumanInput"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "types": [
+                  "Message"
+                ],
+                "selected": "Message",
+                "name": "branch_approve",
+                "display_name": "Approve",
+                "method": "route_branch",
+                "value": "__UNDEFINED__",
+                "cache": true,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": true,
+                "options": null,
+                "tool_mode": true
+              },
+              {
+                "types": [
+                  "Message"
+                ],
+                "selected": "Message",
+                "name": "branch_reject",
+                "display_name": "Reject",
+                "method": "route_branch",
+                "value": "__UNDEFINED__",
+                "cache": true,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": true,
+                "options": null,
+                "tool_mode": true
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "<<OMITTED: installed component source; module lfx.components.flow_controls.human_input.HumanInput; code_hash 63cbbf99823f. Re-read from the instance (GET /api/v1/flows/<id> or /api/v1/all) when generating flows.>>"
+              },
+              "decisions": {
+                "_input_type": "ActionPickerInput",
+                "advanced": false,
+                "api_editable": false,
+                "combobox": true,
+                "display_name": "User Choices",
+                "dynamic": false,
+                "info": "Choices the human can pick; each becomes a branch output. Pick from the list or type a custom one.",
+                "list": true,
+                "list_add_label": "Add More",
+                "name": "decisions",
+                "options": [],
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "actionPicker",
+                "value": [
+                  "Approve",
+                  "Reject"
+                ]
+              },
+              "enable_fallback": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Enable Fallback",
+                "dynamic": false,
+                "info": "Add a 'fallback' output taken when the answer arrives after the timeout window.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "enable_fallback",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": false,
+                "real_time_refresh": true
+              },
+              "prompt": {
+                "_input_type": "MultilineInput",
+                "advanced": false,
+                "ai_enabled": false,
+                "api_editable": false,
+                "copy_field": false,
+                "display_name": "Input",
+                "dynamic": false,
+                "info": "Content shown to the human for review.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "multiline": true,
+                "name": "prompt",
+                "override_skip": false,
+                "password": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "timeout": {
+                "_input_type": "DurationInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Timeout",
+                "dynamic": false,
+                "info": "A response received after this window is rerouted to the fallback path (when enabled) instead of the chosen action. The run stays paused until a response arrives or the server's suspended-run deadline expires it. Set to 0 to wait indefinitely.",
+                "name": "timeout",
+                "options": [
+                  "Minutes",
+                  "Hours",
+                  "Days"
+                ],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "duration",
+                "value": {
+                  "unit": "Days",
+                  "value": 3
+                }
+              },
+              "_frontend_node_flow_id": {
+                "value": "0685ac65-234e-4752-bf76-ba45860e74be"
+              },
+              "_frontend_node_folder_id": {
+                "value": "a0398c1d-c458-4dac-8e3b-8cdec2a2b98e"
+              },
+              "is_refresh": false
+            },
+            "tool_mode": false,
+            "last_updated": "2026-10-20T04:57:07.266Z"
+          },
+          "showNode": true,
+          "type": "HumanInput",
+          "id": "HumanInput-MhFhf"
+        },
+        "selected": false,
+        "measured": {
+          "width": 320,
+          "height": 343
+        }
+      },
+      {
+        "id": "A2AAgent-BqX7M",
+        "type": "genericNode",
+        "position": {
+          "x": 807,
+          "y": 63
+        },
+        "data": {
+          "node": {
+            "base_classes": [
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Call an A2A (Agent-to-Agent) agent and return its reply. Pick an agent flow in this project, or point at a remote agent by its URL.",
+            "display_name": "A2A Agent",
+            "documentation": "https://docs.langflow.org/a2a-server",
+            "edited": false,
+            "field_order": [
+              "mode",
+              "agent_name_selected",
+              "agent_url",
+              "agent_card",
+              "input_value",
+              "api_key",
+              "timeout"
+            ],
+            "frozen": false,
+            "icon": "bot",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "5cf6abad189d",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "httpx",
+                    "version": "0.28.1"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": null
+                  },
+                  {
+                    "name": "a2a",
+                    "version": "1.2.1"
+                  },
+                  {
+                    "name": "langchain_core",
+                    "version": "1.5.1"
+                  }
+                ],
+                "total_dependencies": 4
+              },
+              "module": "lfx.components.models_and_agents.a2a_agent.A2AAgentComponent"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Response",
+                "group_outputs": false,
+                "method": "send_to_agent",
+                "name": "response",
+                "selected": "Message",
+                "tool_mode": true,
+                "types": [
+                  "Message"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "agent_card": {
+                "_input_type": "DataDisplayInput",
+                "advanced": false,
+                "api_editable": false,
+                "button_icon": "id-card",
+                "button_text": "View agent card",
+                "display_name": "Agent card",
+                "dynamic": false,
+                "info": "The remote agent's advertised card. Appears when you enter a URL that returns one.",
+                "name": "agent_card",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "data_display",
+                "value": ""
+              },
+              "agent_name_selected": {
+                "_input_type": "DropdownInput",
+                "advanced": false,
+                "api_editable": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Agent",
+                "dynamic": false,
+                "external_options": {},
+                "info": "An agent flow in this project (one with a chat input and a chat output).",
+                "name": "agent_name_selected",
+                "options": [],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": ""
+              },
+              "agent_url": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Agent URL",
+                "dynamic": false,
+                "info": "The remote A2A agent's URL. Paste either its base URL or its /.well-known/agent-card.json card URL; both resolve the same agent.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "agent_url",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "",
+                "real_time_refresh": true
+              },
+              "api_key": {
+                "_input_type": "SecretStrInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "API Key",
+                "dynamic": false,
+                "info": "Optional API key sent as x-api-key, for agents that require it.",
+                "input_types": [],
+                "load_from_db": true,
+                "name": "api_key",
+                "override_skip": false,
+                "password": true,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "<<OMITTED: installed component source; module lfx.components.models_and_agents.a2a_agent.A2AAgentComponent; code_hash 5cf6abad189d. Re-read from the instance (GET /api/v1/flows/<id> or /api/v1/all) when generating flows.>>"
+              },
+              "input_value": {
+                "_input_type": "MultilineInput",
+                "advanced": false,
+                "ai_enabled": false,
+                "api_editable": false,
+                "copy_field": false,
+                "display_name": "Message",
+                "dynamic": false,
+                "info": "The message to send to the agent.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "multiline": true,
+                "name": "input_value",
+                "override_skip": false,
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "tool_mode": true,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "mode": {
+                "_input_type": "TabInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Mode",
+                "dynamic": false,
+                "info": "Internal calls another agent flow in this project. External calls a remote A2A agent by its URL.",
+                "name": "mode",
+                "options": [
+                  "Internal",
+                  "External"
+                ],
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "tab",
+                "value": "External"
+              },
+              "timeout": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Timeout (s)",
+                "dynamic": false,
+                "info": "Maximum seconds to wait for the agent's reply.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "timeout",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "int",
+                "value": 60
+              }
+            },
+            "tool_mode": false
+          },
+          "showNode": true,
+          "type": "A2AAgent",
+          "id": "A2AAgent-BqX7M"
+        },
+        "selected": false,
+        "measured": {
+          "width": 320,
+          "height": 401
+        }
+      },
+      {
+        "id": "RunFlow-Xt49v",
+        "type": "genericNode",
+        "position": {
+          "x": 364,
+          "y": 476
+        },
+        "data": {
+          "node": {
+            "add_tool_output": true,
+            "base_classes": [],
+            "beta": true,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Executes another flow from within the same project. Can also be used as a tool for agents. \n **Select a Flow to use the tool mode**",
+            "display_name": "Run Flow",
+            "documentation": "https://docs.langflow.org/run-flow",
+            "edited": false,
+            "field_order": [
+              "flow_name_selected",
+              "flow_id_selected",
+              "session_id",
+              "cache_flow"
+            ],
+            "frozen": false,
+            "icon": "Workflow",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "ea901208037d",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 1
+              },
+              "module": "lfx.components.flow_controls.run_flow.RunFlowComponent"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "types": [
+                  "Message"
+                ],
+                "selected": "Message",
+                "name": "ChatOutput-ca04x~message",
+                "hidden": null,
+                "display_name": "Chat Output",
+                "method": "_resolve_flow_output__ChatOutput_ca04x__message",
+                "value": "__UNDEFINED__",
+                "cache": true,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": false,
+                "options": null,
+                "tool_mode": true
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "cache_flow": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Cache Flow",
+                "dynamic": false,
+                "info": "Whether to cache the selected flow.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "cache_flow",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": false
+              },
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "<<OMITTED: installed component source; module lfx.components.flow_controls.run_flow.RunFlowComponent; code_hash ea901208037d. Re-read from the instance (GET /api/v1/flows/<id> or /api/v1/all) when generating flows.>>"
+              },
+              "flow_id_selected": {
+                "_input_type": "StrInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Flow ID",
+                "dynamic": false,
+                "info": "The ID of the flow to run.",
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "flow_id_selected",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "3f476c53-e39f-4157-8f73-5e488a0a43e9"
+              },
+              "flow_name_selected": {
+                "_input_type": "DropdownInput",
+                "advanced": false,
+                "api_editable": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Flow Name",
+                "dynamic": false,
+                "external_options": {},
+                "info": "The name of the flow to run.",
+                "name": "flow_name_selected",
+                "options": [
+                  "TS-00 Connection Check"
+                ],
+                "options_metadata": [
+                  {
+                    "id": "3f476c53-e39f-4157-8f73-5e488a0a43e9",
+                    "updated_at": "2026-10-20T04:54:42.627619"
+                  }
+                ],
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "refresh_button": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": "TS-00 Connection Check",
+                "selected_metadata": {
+                  "id": "3f476c53-e39f-4157-8f73-5e488a0a43e9",
+                  "updated_at": "2026-10-20T04:54:42.627619"
+                }
+              },
+              "session_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Session ID",
+                "dynamic": false,
+                "info": "The session ID to run the flow in.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "session_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "_dynamic_target_fields_note": "Selecting a flow adds one field per target-flow input, named '<targetNodeId>~<field>' with display '<Field> (Chat Input)'. Observed: ChatInput-80GoH~input_value, ChatInput-80GoH~should_store_message, ChatInput-80GoH~sender, ChatInput-80GoH~sender_name, ChatInput-80GoH~session_id, ChatInput-80GoH~context_id, ChatInput-80GoH~files. Only '~input_value' is non-advanced (display 'Input Text (Chat Input)', MultilineInput, tool_mode true). Full attribute dicts not transcribed; they mirror the ChatInput template fields with ' (Chat Input)' appended to display_name.",
+              "ChatInput-80GoH~input_value": {
+                "_input_type": "MultilineInput",
+                "advanced": false,
+                "ai_enabled": false,
+                "api_editable": false,
+                "copy_field": false,
+                "display_name": "Input Text (Chat Input)",
+                "dynamic": false,
+                "info": "Message to be passed as input.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "multiline": true,
+                "name": "ChatInput-80GoH~input_value",
+                "override_skip": false,
+                "password": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": true,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              }
+            },
+            "tool_mode": false,
+            "last_updated": "2026-10-20T04:59:58.754Z"
+          },
+          "showNode": true,
+          "type": "RunFlow",
+          "id": "RunFlow-Xt49v"
+        },
+        "selected": true,
+        "measured": {
+          "width": 320,
+          "height": 321
+        }
+      },
+      {
+        "id": "ChatInput-vS2SB",
+        "type": "genericNode",
+        "position": {
+          "x": 106,
+          "y": 594
+        },
+        "data": {
+          "node": {
+            "base_classes": [
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Get chat inputs from the Playground.",
+            "display_name": "Chat Input",
+            "documentation": "https://docs.langflow.org/chat-input-and-output",
+            "edited": false,
+            "field_order": [
+              "input_value",
+              "should_store_message",
+              "sender",
+              "sender_name",
+              "session_id",
+              "context_id",
+              "files"
+            ],
+            "frozen": false,
+            "icon": "MessagesSquare",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "45974e6b1909",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 1
+              },
+              "module": "lfx.components.input_output.chat.ChatInput"
+            },
+            "minimized": true,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Chat Message",
+                "group_outputs": false,
+                "method": "message_response",
+                "name": "message",
+                "selected": "Message",
+                "tool_mode": true,
+                "types": [
+                  "Message"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "<<OMITTED: installed component source; module lfx.components.input_output.chat.ChatInput; code_hash 45974e6b1909. Re-read from the instance (GET /api/v1/flows/<id> or /api/v1/all) when generating flows.>>"
+              },
+              "context_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Context ID",
+                "dynamic": false,
+                "info": "The context ID of the chat. Adds an extra layer to the local memory.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "context_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "files": {
+                "_input_type": "FileInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Files",
+                "dynamic": false,
+                "fileTypes": [
+                  "csv",
+                  "json",
+                  "pdf",
+                  "txt",
+                  "md",
+                  "mdx",
+                  "yaml",
+                  "yml",
+                  "xml",
+                  "html",
+                  "htm",
+                  "docx",
+                  "py",
+                  "sh",
+                  "sql",
+                  "js",
+                  "ts",
+                  "tsx",
+                  "jpg",
+                  "jpeg",
+                  "png",
+                  "bmp",
+                  "image"
+                ],
+                "file_path": "",
+                "info": "Files to be sent with the message.",
+                "list": true,
+                "list_add_label": "Add More",
+                "name": "files",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "temp_file": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "file",
+                "value": ""
+              },
+              "input_value": {
+                "_input_type": "MultilineInput",
+                "advanced": false,
+                "ai_enabled": false,
+                "api_editable": false,
+                "copy_field": false,
+                "display_name": "Input Text",
+                "dynamic": false,
+                "info": "Message to be passed as input.",
+                "input_types": [],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "multiline": true,
+                "name": "input_value",
+                "override_skip": false,
+                "password": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "sender": {
+                "_input_type": "DropdownInput",
+                "advanced": true,
+                "api_editable": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Sender Type",
+                "dynamic": false,
+                "external_options": {},
+                "info": "Type of sender.",
+                "name": "sender",
+                "options": [
+                  "Machine",
+                  "User"
+                ],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": "User"
+              },
+              "sender_name": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Sender Name",
+                "dynamic": false,
+                "info": "Name of the sender.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "sender_name",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "User"
+              },
+              "session_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Session ID",
+                "dynamic": false,
+                "info": "The session ID of the chat. If empty, the current session ID parameter will be used.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "session_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "should_store_message": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Store Messages",
+                "dynamic": false,
+                "info": "Store the message in the history.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "should_store_message",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              }
+            },
+            "tool_mode": false,
+            "lf_version": "1.12.5"
+          },
+          "showNode": false,
+          "type": "ChatInput",
+          "id": "ChatInput-vS2SB"
+        },
+        "selected": false,
+        "measured": {
+          "width": 192,
+          "height": 52
+        }
+      },
+      {
+        "id": "ChatOutput-R3JqP",
+        "type": "genericNode",
+        "position": {
+          "x": 749,
+          "y": 498
+        },
+        "data": {
+          "node": {
+            "base_classes": [
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Display a chat message in the Playground.",
+            "display_name": "Chat Output",
+            "documentation": "https://docs.langflow.org/chat-input-and-output",
+            "edited": false,
+            "field_order": [
+              "input_value",
+              "should_store_message",
+              "sender",
+              "sender_name",
+              "session_id",
+              "context_id",
+              "data_template",
+              "clean_data"
+            ],
+            "frozen": false,
+            "icon": "MessagesSquare",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "0aab1c78e1dc",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "orjson",
+                    "version": "3.11.9"
+                  },
+                  {
+                    "name": "fastapi",
+                    "version": "0.139.2"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 3
+              },
+              "module": "lfx.components.input_output.chat_output.ChatOutput"
+            },
+            "minimized": true,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Output Message",
+                "group_outputs": false,
+                "method": "message_response",
+                "name": "message",
+                "selected": "Message",
+                "tool_mode": true,
+                "types": [
+                  "Message"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "clean_data": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Basic Clean Data",
+                "dynamic": false,
+                "info": "Whether to clean data before converting to string.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "clean_data",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              },
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "<<OMITTED: installed component source; module lfx.components.input_output.chat_output.ChatOutput; code_hash 0aab1c78e1dc. Re-read from the instance (GET /api/v1/flows/<id> or /api/v1/all) when generating flows.>>"
+              },
+              "context_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Context ID",
+                "dynamic": false,
+                "info": "The context ID of the chat. Adds an extra layer to the local memory.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "context_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "data_template": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Data Template",
+                "dynamic": false,
+                "info": "Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "data_template",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "{text}"
+              },
+              "input_value": {
+                "_input_type": "HandleInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Inputs",
+                "dynamic": false,
+                "info": "Message to be passed as output.",
+                "input_types": [
+                  "Data",
+                  "JSON",
+                  "DataFrame",
+                  "Table",
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "input_value",
+                "override_skip": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "other",
+                "value": ""
+              },
+              "sender": {
+                "_input_type": "DropdownInput",
+                "advanced": true,
+                "api_editable": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Sender Type",
+                "dynamic": false,
+                "external_options": {},
+                "info": "Type of sender.",
+                "name": "sender",
+                "options": [
+                  "Machine",
+                  "User"
+                ],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": "Machine"
+              },
+              "sender_name": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Sender Name",
+                "dynamic": false,
+                "info": "Name of the sender.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "sender_name",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "AI"
+              },
+              "session_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Session ID",
+                "dynamic": false,
+                "info": "The session ID of the chat. If empty, the current session ID parameter will be used.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "session_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "should_store_message": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Store Messages",
+                "dynamic": false,
+                "info": "Store the message in the history.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "should_store_message",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              }
+            },
+            "tool_mode": false,
+            "lf_version": "1.12.5"
+          },
+          "showNode": false,
+          "type": "ChatOutput",
+          "id": "ChatOutput-R3JqP"
+        },
+        "selected": false,
+        "measured": {
+          "width": 192,
+          "height": 52
+        }
+      },
+      {
+        "id": "Prompt Template-978ge",
+        "type": "genericNode",
+        "position": {
+          "x": 396,
+          "y": 207
+        },
+        "data": {
+          "node": {
+            "base_classes": [
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Create a prompt template with dynamic variables.",
+            "display_name": "Prompt Template",
+            "documentation": "https://docs.langflow.org/components-prompts",
+            "edited": false,
+            "field_order": [
+              "template",
+              "use_double_brackets",
+              "tool_placeholder"
+            ],
+            "frozen": false,
+            "icon": "prompts",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "e3714ffe5d15",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 1
+              },
+              "module": "lfx.components.models_and_agents.prompt.PromptComponent"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Prompt",
+                "group_outputs": false,
+                "method": "build_prompt",
+                "name": "prompt",
+                "selected": "Message",
+                "tool_mode": true,
+                "types": [
+                  "Message"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "<<OMITTED: installed component source; module lfx.components.models_and_agents.prompt.PromptComponent; code_hash e3714ffe5d15. Re-read from the instance (GET /api/v1/flows/<id> or /api/v1/all) when generating flows.>>"
+              },
+              "template": {
+                "_input_type": "PromptInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Template",
+                "dynamic": false,
+                "info": "",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "template",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "track_in_telemetry": false,
+                "type": "prompt",
+                "value": ""
+              },
+              "tool_placeholder": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Tool Placeholder",
+                "dynamic": false,
+                "info": "A placeholder input for tool mode.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "tool_placeholder",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": true,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "use_double_brackets": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Use Double Brackets",
+                "dynamic": false,
+                "info": "Use {{variable}} syntax instead of {variable}.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "use_double_brackets",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": false,
+                "real_time_refresh": true
+              }
+            },
+            "tool_mode": false,
+            "category": "models_and_agents",
+            "key": "Prompt Template"
+          },
+          "showNode": true,
+          "type": "Prompt Template",
+          "id": "Prompt Template-978ge"
+        },
+        "selected": false,
+        "measured": {
+          "width": 320,
+          "height": 209
+        }
+      },
+      {
+        "id": "Agent-5OUL7",
+        "type": "genericNode",
+        "position": {
+          "x": 851.2,
+          "y": 427
+        },
+        "data": {
+          "node": {
+            "base_classes": [
+              "Data",
+              "JSON",
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Define the agent's instructions, then enter a task to complete using tools.",
+            "display_name": "Agent",
+            "documentation": "https://docs.langflow.org/agents",
+            "edited": false,
+            "field_order": [
+              "model",
+              "api_key",
+              "base_url_ibm_watsonx",
+              "project_id",
+              "system_prompt",
+              "context_id",
+              "n_messages",
+              "max_tokens",
+              "format_instructions",
+              "output_schema",
+              "tools",
+              "input_value",
+              "handle_parsing_errors",
+              "max_iterations",
+              "stream",
+              "add_current_date_tool",
+              "add_calculator_tool"
+            ],
+            "frozen": false,
+            "icon": "bot",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "14306d4a9373",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "langchain",
+                    "version": "1.3.14"
+                  },
+                  {
+                    "name": "langgraph",
+                    "version": "1.2.9"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": null
+                  },
+                  {
+                    "name": "langchain_core",
+                    "version": "1.5.1"
+                  }
+                ],
+                "total_dependencies": 4
+              },
+              "module": "lfx.components.models_and_agents.agent.AgentComponent"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "types": [
+                  "Message"
+                ],
+                "selected": "Message",
+                "name": "response",
+                "display_name": "Response",
+                "method": "message_response",
+                "value": "__UNDEFINED__",
+                "cache": true,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": false,
+                "options": null,
+                "tool_mode": true
+              },
+              {
+                "types": [
+                  "Data",
+                  "JSON"
+                ],
+                "selected": "Data",
+                "name": "structured_response",
+                "display_name": "Structured Response",
+                "method": "json_response",
+                "value": "__UNDEFINED__",
+                "cache": true,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": false,
+                "options": null,
+                "tool_mode": true
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "add_calculator_tool": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Calculator",
+                "dynamic": false,
+                "info": "If true, adds a zero-config arithmetic calculator tool to the agent (safe: only +, -, *, /, ** operators via AST).",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "add_calculator_tool",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              },
+              "add_current_date_tool": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Current Date",
+                "dynamic": false,
+                "info": "If true, will add a tool to the agent that returns the current date.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "add_current_date_tool",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              },
+              "api_key": {
+                "_input_type": "SecretStrInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "API Key",
+                "dynamic": false,
+                "info": "<<UNKNOWN: not transcribed>>",
+                "input_types": [],
+                "load_from_db": false,
+                "name": "api_key",
+                "override_skip": false,
+                "password": true,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "base_url_ibm_watsonx": {
+                "_input_type": "DropdownInput",
+                "advanced": false,
+                "api_editable": false,
+                "combobox": true,
+                "display_name": "watsonx API Endpoint",
+                "info": "The base URL of the API (IBM watsonx.ai only)",
+                "name": "base_url_ibm_watsonx",
+                "options": [
+                  "https://us-south.ml.cloud.ibm.com",
+                  "https://eu-de.ml.cloud.ibm.com",
+                  "https://eu-gb.ml.cloud.ibm.com",
+                  "https://au-syd.ml.cloud.ibm.com",
+                  "https://jp-tok.ml.cloud.ibm.com",
+                  "https://ca-tor.ml.cloud.ibm.com"
+                ],
+                "real_time_refresh": true,
+                "show": false,
+                "type": "str",
+                "value": "https://us-south.ml.cloud.ibm.com"
+              },
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "<<OMITTED: installed component source; module lfx.components.models_and_agents.agent.AgentComponent; code_hash 14306d4a9373. Re-read from the instance (GET /api/v1/flows/<id> or /api/v1/all) when generating flows.>>"
+              },
+              "context_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Context ID",
+                "dynamic": false,
+                "info": "The context ID of the chat. Adds an extra layer to the local memory.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "context_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "format_instructions": {
+                "_input_type": "MultilineInput",
+                "advanced": true,
+                "ai_enabled": false,
+                "api_editable": false,
+                "copy_field": false,
+                "display_name": "Output Format Instructions",
+                "dynamic": false,
+                "info": "Generic Template for structured output formatting. Valid only with Structured response.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "format_instructions",
+                "password": false,
+                "required": false,
+                "show": true,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "type": "str",
+                "value": "You are an AI that extracts structured JSON objects from unstructured text. Use a predefined schema with expected types (str, int, float, bool, dict). Extract ALL relevant instances that match the schema - if multiple patterns exist, capture them all. Fill missing or ambiguous values with defaults: null for missing values. Remove exact duplicates but keep variations that have different field values. Always return valid JSON in the expected format, never throw errors. If multiple objects can be extracted, return them all in the structured format."
+              },
+              "handle_parsing_errors": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Handle Parse Errors",
+                "dynamic": false,
+                "info": "Adds tool-execution retry as a safety net. `create_agent` already feeds tool-call validation errors back to the LLM automatically; this flag layers `ToolRetryMiddleware` on top so transient tool runtime failures are retried (max 2 retries).",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "handle_parsing_errors",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              },
+              "input_value": {
+                "_input_type": "MessageInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Input",
+                "dynamic": false,
+                "info": "The input provided by the user for the agent to process.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "input_value",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": true,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "max_iterations": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Max Iterations",
+                "dynamic": false,
+                "info": "Maximum number of model calls the agent can make before stopping (maps to `ModelCallLimitMiddleware.run_limit` on the create_agent path). Must be at least 1 - it is a safety cap, never 'unlimited'.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "max_iterations",
+                "override_skip": false,
+                "placeholder": "",
+                "range_spec": {
+                  "max": 128000,
+                  "min": 1,
+                  "step": 1,
+                  "step_type": "int"
+                },
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "int",
+                "value": 15,
+                "input_types": []
+              },
+              "max_tokens": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Max Tokens",
+                "dynamic": false,
+                "info": "Maximum number of tokens to generate. Set to 0 for no explicit limit. Field name varies by provider.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "max_tokens",
+                "override_skip": false,
+                "placeholder": "",
+                "range_spec": {
+                  "max": 128000,
+                  "min": 0,
+                  "step": 1,
+                  "step_type": "int"
+                },
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "int",
+                "value": 0,
+                "input_types": []
+              },
+              "model": {
+                "_input_type": "ModelInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Language Model",
+                "dynamic": false,
+                "external_options": {
+                  "fields": {
+                    "data": {
+                      "node": {
+                        "display_name": "Connect other models",
+                        "icon": "CornerDownLeft",
+                        "name": "connect_other_models"
+                      }
+                    }
+                  }
+                },
+                "filters": {
+                  "tool_calling": true
+                },
+                "info": "Select your model provider",
+                "input_types": [
+                  "LanguageModel"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "model_type": "language",
+                "name": "model",
+                "override_skip": false,
+                "placeholder": "Setup Provider",
+                "real_time_refresh": true,
+                "refresh_button": true,
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "track_in_telemetry": false,
+                "type": "model",
+                "value": "<<UNKNOWN: not transcribed; the editor showed 'Select a model' (no model chosen in this template node)>>",
+                "options": [
+                  {
+                    "name": "claude-sonnet-5-5",
+                    "icon": "Anthropic",
+                    "category": "Anthropic",
+                    "provider": "Anthropic",
+                    "metadata": {
+                      "context_length": 128000,
+                      "model_class": "ChatAnthropic",
+                      "model_name_param": "model",
+                      "api_key_param": "api_key",
+                      "max_tokens_field_name": "max_tokens",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-sonnet-5-5"
+                      ]
+                    }
+                  },
+                  {
+                    "name": "claude-opus-5-5",
+                    "icon": "Anthropic",
+                    "category": "Anthropic",
+                    "provider": "Anthropic",
+                    "metadata": {
+                      "context_length": 128000,
+                      "model_class": "ChatAnthropic",
+                      "model_name_param": "model",
+                      "api_key_param": "api_key",
+                      "max_tokens_field_name": "max_tokens",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-opus-5-5"
+                      ]
+                    }
+                  },
+                  {
+                    "name": "claude-fable-5-1",
+                    "icon": "Anthropic",
+                    "category": "Anthropic",
+                    "provider": "Anthropic",
+                    "metadata": {
+                      "context_length": 128000,
+                      "model_class": "ChatAnthropic",
+                      "model_name_param": "model",
+                      "api_key_param": "api_key",
+                      "max_tokens_field_name": "max_tokens",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "claude-fable-5-1"
+                      ]
+                    }
+                  },
+                  {
+                    "name": "gpt-6.1-sol",
+                    "icon": "OpenAI",
+                    "category": "OpenAI",
+                    "provider": "OpenAI",
+                    "metadata": {
+                      "context_length": 128000,
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "api_key_param": "api_key",
+                      "max_tokens_field_name": "max_tokens",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-6.1-sol"
+                      ]
+                    }
+                  },
+                  {
+                    "name": "gpt-6-luna",
+                    "icon": "OpenAI",
+                    "category": "OpenAI",
+                    "provider": "OpenAI",
+                    "metadata": {
+                      "context_length": 128000,
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "api_key_param": "api_key",
+                      "max_tokens_field_name": "max_tokens",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-6-luna"
+                      ]
+                    }
+                  },
+                  {
+                    "name": "gpt-6-sol",
+                    "icon": "OpenAI",
+                    "category": "OpenAI",
+                    "provider": "OpenAI",
+                    "metadata": {
+                      "context_length": 128000,
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "api_key_param": "api_key",
+                      "max_tokens_field_name": "max_tokens",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-6-sol"
+                      ]
+                    }
+                  },
+                  {
+                    "name": "gpt-6-astra",
+                    "icon": "OpenAI",
+                    "category": "OpenAI",
+                    "provider": "OpenAI",
+                    "metadata": {
+                      "context_length": 128000,
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "api_key_param": "api_key",
+                      "max_tokens_field_name": "max_tokens",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-6-astra"
+                      ]
+                    }
+                  },
+                  {
+                    "name": "gpt-daybreak-red-latest",
+                    "icon": "OpenAI",
+                    "category": "OpenAI",
+                    "provider": "OpenAI",
+                    "metadata": {
+                      "context_length": 128000,
+                      "model_class": "ChatOpenAI",
+                      "model_name_param": "model",
+                      "api_key_param": "api_key",
+                      "max_tokens_field_name": "max_tokens",
+                      "reasoning": true,
+                      "reasoning_models": [
+                        "gpt-daybreak-red-latest"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "n_messages": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Number of Chat History Messages",
+                "dynamic": false,
+                "info": "Number of chat history messages to retrieve.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "n_messages",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "int",
+                "value": 100,
+                "input_types": []
+              },
+              "output_schema": {
+                "_input_type": "TableInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Output Schema",
+                "dynamic": false,
+                "info": "Schema Validation: Define the structure and data types for structured output. No validation if no output schema.",
+                "input_types": [
+                  "DataFrame",
+                  "Table"
+                ],
+                "is_list": true,
+                "list_add_label": "Add More",
+                "name": "output_schema",
+                "required": false,
+                "show": true,
+                "table_icon": "Table",
+                "table_schema": [
+                  {
+                    "default": "field",
+                    "description": "Specify the name of the output field.",
+                    "display_name": "Name",
+                    "edit_mode": "inline",
+                    "name": "name",
+                    "type": "str"
+                  },
+                  {
+                    "default": "description of field",
+                    "description": "Describe the purpose of the output field.",
+                    "display_name": "Description",
+                    "edit_mode": "popover",
+                    "name": "description",
+                    "type": "str"
+                  },
+                  {
+                    "default": "str",
+                    "description": "Indicate the data type of the output field (e.g., str, int, float, bool, dict).",
+                    "display_name": "Type",
+                    "edit_mode": "inline",
+                    "name": "type",
+                    "options": [
+                      "str",
+                      "int",
+                      "float",
+                      "bool",
+                      "dict"
+                    ],
+                    "type": "str"
+                  },
+                  {
+                    "default": "False",
+                    "description": "Set to True if this output field should be a list of the specified type.",
+                    "display_name": "As List",
+                    "edit_mode": "inline",
+                    "name": "multiple",
+                    "type": "boolean"
+                  }
+                ],
+                "tool_mode": false,
+                "trigger_icon": "Table",
+                "trigger_text": "Open table",
+                "type": "table",
+                "value": []
+              },
+              "project_id": {
+                "_input_type": "StrInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "watsonx Project ID",
+                "dynamic": false,
+                "info": "The project ID associated with the foundation model (IBM watsonx.ai only)",
+                "list": false,
+                "load_from_db": false,
+                "name": "project_id",
+                "required": false,
+                "show": false,
+                "type": "str",
+                "value": "",
+                "input_types": []
+              },
+              "stream": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Stream",
+                "dynamic": false,
+                "info": "Stream the response from the model. Streaming works only in Chat.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "stream",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              },
+              "system_prompt": {
+                "_input_type": "MultilineInput",
+                "advanced": false,
+                "ai_enabled": false,
+                "api_editable": false,
+                "copy_field": false,
+                "display_name": "Agent Instructions",
+                "dynamic": false,
+                "info": "System Prompt: Initial instructions and context provided to guide the agent's behavior. Supports dynamic placeholders: {current_date}, {model_name}, {optional_user_context}.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "multiline": true,
+                "name": "system_prompt",
+                "override_skip": false,
+                "password": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "<<Langflow DEFAULT_SYSTEM_PROMPT_TEMPLATE (long default text beginning 'You are a Langflow Agent'; see screenshot 01-06). Not transcribed.>>"
+              },
+              "tools": {
+                "_input_type": "HandleInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Tools",
+                "dynamic": false,
+                "info": "These are the tools that the agent can use to help with tasks.",
+                "input_types": [
+                  "Tool"
+                ],
+                "list": true,
+                "list_add_label": "Add More",
+                "name": "tools",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "other",
+                "value": ""
+              },
+              "_frontend_node_flow_id": {
+                "value": "0685ac65-234e-4752-bf76-ba45860e74be",
+                "input_types": []
+              },
+              "_frontend_node_folder_id": {
+                "value": "a0398c1d-c458-4dac-8e3b-8cdec2a2b98e",
+                "input_types": []
+              },
+              "is_refresh": false
+            },
+            "tool_mode": false,
+            "last_updated": "2026-10-20T04:59:10.498Z",
+            "lf_version": "1.12.5"
+          },
+          "showNode": true,
+          "type": "Agent",
+          "id": "Agent-5OUL7",
+          "selected_output": "response",
+          "_connectionMode": false
+        },
+        "selected": false,
+        "measured": {
+          "width": 320,
+          "height": 431
+        }
+      }
+    ],
+    "edges": [],
+    "viewport": {
+      "x": 98,
+      "y": 66.5,
+      "zoom": 0.8333333333333334
+    }
+  },
+  "is_component": false,
+  "updated_at": "2026-10-20T05:00:00+00:00",
+  "webhook": false,
+  "endpoint_name": null,
+  "tags": [],
+  "locked": false,
+  "mcp_enabled": true,
+  "action_name": null,
+  "action_description": null,
+  "access_type": "PRIVATE",
+  "flow_type": "workflow",
+  "a2a_enabled": false,
+  "a2a_card_overrides": null,
+  "id": "0685ac65-234e-4752-bf76-ba45860e74be",
+  "user_id": "<<REDACTED-owner-user-id>>",
+  "folder_id": "a0398c1d-c458-4dac-8e3b-8cdec2a2b98e",
+  "workspace_id": null,
+  "name_key": null,
+  "_not_in_this_template": {
+    "MCP Tools": "NOT AVAILABLE in the component catalog on this instance while no MCP server is registered. The editor's MCP sidebar shows 'No MCP Servers Added' + 'Add MCP Server'. Capture its template in Phase 04 after the lab MCP server is registered (owner action)."
+  }
+}
