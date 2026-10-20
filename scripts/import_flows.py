@@ -18,7 +18,8 @@ missing). Unrelated flows/projects (TS-00, Starter Project, ...) are never modif
                    global-variable NAME the flow references exists, and binding names only.
 
 Idempotent: a flow that already exists with identical content is kept; a differing one is
-reported and only replaced with --force. A second run creates no duplicates. After writing,
+reported and only replaced with --force (--force also rewrites an identical flow from the
+export, which is the re-import round-trip test). A second run creates no duplicates. After writing,
 each flow is read back and compared (node ids/types, edges, bound variable names, MCP
 server names) = round-trip verification. Secrets: the export step removes every non-empty
 password-field value and fails if a credential-like string remains.
@@ -273,7 +274,7 @@ def main(argv: list[str] | None = None) -> int:
                 cur = existing.get(name)
                 if cur is not None:
                     live = check(c.get(f"/api/v1/flows/{cur['id']}"), f"read {name}")
-                    if digest(live["data"]) == digest(data):
+                    if digest(live["data"]) == digest(data) and not a.force:
                         print(f"OK keep {name} id={cur['id']} (identical bindings/wiring)")
                         continue
                     if not a.force:
