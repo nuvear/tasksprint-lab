@@ -1,10 +1,10 @@
-# Phase 08 report: Production Manager and genuine A2A (INTERIM — stopped for lab redeploy)
+# Phase 08 report: Production Manager and genuine A2A
 
-**Date:** 20 October 2026, 13:00–13:35 UTC. **Instance:** Langflow 1.12.5
+**Date:** 20 October 2026, 13:00–13:45 UTC (stopped 13:30 for the lab redeploy, resumed 13:33). **Instance:** Langflow 1.12.5
 (`https://langflow-railway-production-f493.up.railway.app`), owner's Chrome signed in as admin by the
 owner; lab `https://tasksprint-lab-production.up.railway.app` (serves brief 1.1 / skill 1.2.0, lab
 code = Phase 07). **Branch:** `feature/phase-08-a2a` from `4c9f9f1` (not pushed).
-**Gate:** GATE 08 **NOT YET** — **redeploy needed before live A2A assessment** (see "Stop point").
+**Gate:** **GATE 08 PASS** (table below). Lab redeployed by the orchestrator from `main` = `ea746f1` (lab 0.5.0) mid-phase; `phase08_checks.py lab` → `GET /v1/readiness -> 200`.
 
 **Not touched:** Railway (no variable/deploy/service change by this phase; the A2A flag was set by the
 orchestrator before it started), Langflow Postgres, `nuvear/langflow-railway`, TS-01/02/03/30, MCP
@@ -16,7 +16,7 @@ server registrations, Model Providers, TS-90 (not created). No secret value was 
 * `GET /api/v1/a2a/agents` (bootstrap key) → `200 []`.
 * TS-30's Agent pane shows the **Serve as an A2A agent** toggle with no "A2A is turned off" banner (`08-04`).
 
-## 2. Lab: Operations surface for the assessment (code done; **not yet deployed**)
+## 2. Lab: Operations surface for the assessment (deployed from `ea746f1`)
 
 Lab 0.5.0 (`services/lab/release_plans.py`, `a2a_exchanges.py`, migration 0003):
 
@@ -110,30 +110,32 @@ Wiring check (API run, session `phase08-wiring-check`, coordinator run `run_7ff2
 lists exactly 11 tools: 7 MCP + `ask_product_owner`, `ask_developer`, `ask_qa`, `assess_production_release`.
 No generic A2A tool; TS-90 does not exist.
 
-## 7. Live checks 08.6 — **NOT RUN (need the redeployed lab)**
+## 7. Live checks 08.6 (lab 0.5.0 deployed)
 
-The adapter persists every exchange through `POST /v1/a2a-exchanges`, and Operations needs the real
-`get_release_readiness` / `create_release_plan`; the deployed lab still answers `GET /v1/readiness`
-**404** (`phase08_checks.py lab`). Running the assessment now would only produce `AUDIT_NOT_RECORDED`.
+Pre-check (13:33:54Z, operations REST, no run): readiness for `cand_af9914e75be0ca672c26ce3f` (sha256
+`af9914e75be0…acf8`, agent-generated) → gates candidate PASS, differs_from_active PASS,
+application_tests PASS, **agent_system_manifest NOT_QUALIFIED**, no_incident_on_target PASS → deploy
+**BLOCKED** (`evt_46933108a075c6b3e7720646`). `tr_b2139a09ad81f4d67b6ef3a1` = pass for that exact hash.
 
-## Stop point — redeploy needed before live A2A assessment
+| # | Check | Result | Evidence |
+|---|---|---|---|
+| L1 | Sprint Room asks for the assessment (Playground "New Session 3", 13:34:42Z) | **PASS** — blocked assessment, no plan, no release | Coordinator run `run_f734552ce4db58ff476a3a3ff592b21b`: `get_sprint_state`, `read_test_report`, `assess_production_release` (15.7 s). A2A **Task `2be4fd39-edf9-4c4b-971f-aaa8278acba0`**, **context `run_f734552c…`** (= coordinator run), state `completed`, **artifact `cd23cee4-3201-410f-b121-d729504a0b18`**, request **messageId `2fbebea75ce147dba4c4d7bec1eca400`** (data part; the 0.3 result carries no `history`, so no message ids come back), `tasks/get` read-back consistent. Exchange **`a2ax_fd510b2e2ff72ae31afc43bf`** (sha256 `57bb8095…`), event **`evt_e898cb7651bdd5a247c99c14`**; linked evidence `tr_b2139a09…` pass, `tr_b6dbd812…` pass, `cand_af9914e7…` — all `exists: true`. Operations' own child run **`run_17ec87ddbd2089bf56d6323c745e868f`** (depth 1, parent = coordinator): `get_sprint_state`, `get_app_health`, `get_release_status`, `list_skills`, `get_release_readiness` (`release.readiness` blocked `evt_0ea1dd406cdd2f4d9cca80ac`), `read_test_report`, `load_skill` release-and-recover 1.0.0 (`evt_d194e102…`), `read_candidate` = 8/8 actions. It did not call `create_release_plan` ("would be refused with RELEASE_NOT_READY"). Payload exactly as the contract: schema 1.1, intent assess_release, the three references, `agent_manifest_id: null`, deadline `13:36:18Z`, `allow_execute: false`. Adapter recorded `scheme_upgraded_to_https: true` (`08-12`, `08-13`, `08-14`) |
+| L2 | Same-turn duplicate (New Session 4, 13:36:09Z) | **PASS** | Coordinator run `run_7ad59de24f985dfea308f4f6ebfc1848`: first call → Task `f3d0ab50-0b78-44e2-a417-53be43553f05`, exchange `a2ax_add148ab6b299a16fdece0ac`, Operations run `run_028b98c0…` (blocked `evt_da1cab5a…`); second identical call refused by the harness in 2 ms **`DELEGATION_LIMIT`** "assess_production_release was already used this turn"; no second exchange, Task or Operations run (`08-15`) |
+| L3 | Peer disabled: TS-20 **Serve as an A2A agent** off + Save (13:38:10Z, `08-16`) | **PASS** — bounded failure | Card → 404, `a2a_enabled=false`. Sprint Room (New Session 5) run `run_d4a8bc0a3bd424c7d9a26a4aaea79985`: `assess_production_release` (139 ms) → outcome `unreachable`, **`PEER_UNAVAILABLE`** "agent card answered HTTP 404 … No task was sent", `operations_artifact: null`; exchange `a2ax_06d6a76d9c2e78c502553469` (event `evt_7dad39fdaec5b5e7e6eb4560`) with no task/context/artifact, no peer runs, no linked evidence; the coordinator reported "no assessment … nothing was deployed" and made no retry (`08-17`) |
+| L4 | Re-enable (13:40:26Z, **Live**, `08-18`) and retest (New Session 6, 13:41:07Z) | **PASS** | Coordinator run `run_7fee0ead9556ddf6405918787f59dec4`: Task `2367530c-376f-4dad-860f-448a6f6f110b`, artifact `d79d4895-847d-4193-988a-9abad01e393b`, exchange `a2ax_1df2a6df18e783c64588e3f1` (event `evt_7515a678836d18a972fb1c17`), Operations run `run_66224ae5b1e81602e9a778990b8b86fd` (depth 1, readiness blocked `evt_f0a643d4…`); blocked, no plan (`08-19`) |
+| L5 | Unauthorized rerun after re-enable (13:42:02Z) | **PASS** | `message/send` no key 401 "API key required", wrong key 401 "Invalid API key"; valid key 200 Task `3aafe488-5989-4da5-8aae-a7ae83d837d4` (Operations root run `run_cbbc20e7…`, read-only) |
+| L6 | Nothing released | **PASS** | `GET /v1/releases` after all checks: active `cand_561149e5c98bb5b7e8ab7357` revision **0**, history 1 (seed); no `release_plan.*`, approval or execution event in the workspace since 13:33Z |
 
-**Orchestrator:** merge `feature/phase-08-a2a` → lab repository `main` and push, so Railway rebuilds
-`tasksprint-lab` (migration 0003 is applied once at start; the volume is kept). Then confirm
-`scripts/phase08_checks.py lab` → `200 (Phase 08 lab deployed)` and MCP `serverInfo.version` 0.5.0.
-No Langflow or Railway variable change is needed.
+## Gate 08
 
-**Remaining after the redeploy (same phase):**
-1. Sprint Room Playground: ask for a release assessment of a tested candidate (e.g. `cand_af9914e7…` /
-   pass `tr_b2139a09…`) → capture Task/context/artifact IDs, `a2a.exchange` event, exchange record
-   (`phase08_checks.py exchange --id …`), Operations child run and its tool trace; expect a **blocked**
-   assessment (agent-system manifest NOT_QUALIFIED → `RELEASE_NOT_READY`), no release (screenshots).
-2. Duplicate/dedup check (A2A-04): repeat → second `assess_production_release` in the same turn refused
-   `DELEGATION_LIMIT`; across turns plan dedup is unit-tested (live only if a plan can be created).
-3. Peer disabled: TS-20 pane toggle **off** + Save → Sprint Room gets `PEER_UNAVAILABLE` (card 404),
-   exchange recorded with no task, no plan/release; re-enable, retest.
-4. Unauthorized retest after re-enable (no/wrong key → 401).
-5. Final exports, this report's Gate table, OBSERVED_UI/BUILD_STATUS, reset list, commit.
+| Gate item | Verdict | Evidence |
+|---|---|---|
+| Genuine A2A exchange captured | **PASS** | a2a SDK JSON-RPC 0.3 `message/send` + `tasks/get` to the published TS-20 endpoint; Tasks `2be4fd39…`, `f3d0ab50…`, `2367530c…` with contexts, artifacts and states from the wire; exchanges `a2ax_fd510b2e…`, `a2ax_add148ab…`, `a2ax_1df2a6df…`; Operations' separate model loop and tool trace in child runs `run_17ec87dd…`, `run_028b98c0…`, `run_66224ae5…` |
+| Actual protocol version recorded | **PASS** | card `protocolVersion` **0.3.0**, `preferredTransport` JSONRPC, apiKey `x-api-key` (§4; recorded in each exchange) |
+| Unauthorized execution fails | **PASS** | 401 without key / with wrong key, twice (13:22Z, 13:42Z); `tasks/get` without key 401; card stays public |
+| Returned assessment linked to backend evidence | **PASS** | lab-verified `linked_evidence` (all exist) + `release.readiness` events of the Operations child runs, lineage parent = coordinator run, `tasks_get_consistent: true` |
+| A2A-04 unreachable peer / duplicate | **PASS** | L3 bounded `PEER_UNAVAILABLE`, no artifact/release; L2 `DELEGATION_LIMIT`; plan dedup unit-tested (no live plan possible: manifest gate) |
+| Must not deploy | **PASS** | L6 |
 
 ## Findings and decisions for the owner
 
@@ -149,21 +151,40 @@ No Langflow or Railway variable change is needed.
 5. Specialists TS-01/02/03 keep Bounded Toolset 1.0.0 / Run Context 1.1.0 (no behaviour change needed);
    only TS-10 (toolset 1.1.0) and TS-20 (toolset 1.1.0, Run Context 1.2.0) use the new versions.
 6. `TS_A2A_API_KEY` is an admin-equivalent key (see §5).
+7. **Operations used its whole 8-action budget** in two of three assessments (broad reads, skill load,
+   readiness, candidate). It still finished, but a plan call would not have fitted. Phase 09/10 may need
+   a prompt line ("readiness first; create_release_plan only when READY") or the owner may accept it.
+8. **Two passing reports for the same hash** (`tr_b2139a09…`, `tr_b6dbd812…`, Phase 07): readiness picks the
+   newest; both agents flagged the mismatch. Not a defect; the protected suite is deterministic.
+9. The coordinator called the active v0 baseline a "candidate mismatch" in L3 — a wording issue only.
+10. The Playground shows the inner adapter call (`TS20 PRODUCTION MANAGER A2A`) as a second step under
+    `ASSESS PRODUCTION RELEASE` (callback display); the Agent's tool list does not contain it (§6).
+11. Leaving the TS-10 editor after a Playground run triggers a client save ("Flow saved successfully!");
+    bindings/wiring stayed identical (`import_flows.py --dry-run` keep ×6).
 
-## Reset list so far (demo-001 / Langflow)
+## Reset list (artifacts created in demo-001 / Langflow in Phase 08, for Phase 11)
 
-Lab: operations run `run_5ccf7f11bc2db90b85d89c877cd974b8` (+3 events from 13:22:56Z), coordinator run
-`run_7ff21bff4270746d6dff94df105e618d` (wiring check). No plans, exchanges, approvals or releases.
-Langflow: flow TS-20 (published), TS-10 updated, API key `tasksprint-a2a-runtime`, Credential global
-`TS_A2A_API_KEY`; A2A task `52540ff5-62c5-441c-a6a8-46780acc5c5e` (TS-20 task store) and its session;
-TS-10 API session `phase08-wiring-check`.
+Lab `demo-001`: A2A exchanges `a2ax_fd510b2e2ff72ae31afc43bf`, `a2ax_add148ab6b299a16fdece0ac`,
+`a2ax_06d6a76d9c2e78c502553469`, `a2ax_1df2a6df18e783c64588e3f1` (append-only); coordinator runs
+`run_7ff21bff…` (wiring check), `run_f734552c…`, `run_7ad59de2…`, `run_d4a8bc0a…`, `run_7fee0ead…`;
+operations runs `run_5ccf7f11…`, `run_cbbc20e7…` (auth checks, root), `run_17ec87dd…`, `run_028b98c0…`,
+`run_66224ae5…` (children); all `demo-001` events from 13:22:56Z on (incl. `release.readiness` events, e.g.
+the operator pre-check `evt_46933108…`). Not created: plans, approvals, releases, stories, candidates,
+test runs, memory. Langflow: flow TS-20 (published, Live), TS-10 updated; API key
+`tasksprint-a2a-runtime`; Credential global `TS_A2A_API_KEY`; TS-20 A2A tasks `52540ff5…`, `3aafe488…`
+(context `phase08-auth-ts_a2a_api_key`), `2be4fd39…`, `f3d0ab50…`, `2367530c…` and their sessions;
+TS-10 Playground sessions New Session 3–6 and API session `phase08-wiring-check`.
 
-## Screenshots (08-04 … 08-11)
+## Screenshots (08-01 … 08-19; 08-01..03 by the orchestrator)
 
+08-01-langflow-vars-before, 08-02-langflow-a2a-var-added, 08-03-langflow-flows-after-redeploy,
 08-04-a2a-pane-enabled-ts30-draft, 08-05-langflow-api-keys-list-a2a-runtime (Key column masked),
 08-06-ts20-production-manager-canvas, 08-07-ts20-a2a-toggle-on-draft, 08-08-ts20-a2a-live-published,
 08-09-ts10-sprint-room-with-a2a-peer, 08-10-ts10-a2a-audit-wired-to-toolset-slot,
-08-11-ts20-agent-card-public-json.
+08-11-ts20-agent-card-public-json, 08-12-ts10-assess-production-release-trace,
+08-13-ts10-assessment-blocked-no-plan, 08-14-ts10-assessment-evidence-ids,
+08-15-ts10-duplicate-assessment-delegation-limit, 08-16-ts20-a2a-toggled-off,
+08-17-ts10-peer-disabled-bounded-failure, 08-18-ts20-a2a-re-enabled-live, 08-19-ts10-retest-after-re-enable.
 
 ## Manual click path (human equivalent)
 
@@ -176,3 +197,9 @@ TS-10 API session `phase08-wiring-check`.
    https form of the address; **Peer flow ID**; **A2A API key** globe → `TS_A2A_API_KEY`; **Coordinator
    token (audit)** → `TS_COORD_TOKEN`; wire **Toolset** → Bounded Toolset **A2A peer: TS-20 Production
    Manager** (Toolset code replaced with 1.1.0). Never wire it to the Agent directly.
+
+## Next action
+
+Owner: review findings 1–4 and 7 (http card URL, contract 1.1, tool name, manifest gate, Operations
+budget). Orchestrator: no redeploy needed for Phase 08's final commit (only flows/docs changed after
+`ea746f1`). Then Card 09 (human-only approval / execution).

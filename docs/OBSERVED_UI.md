@@ -276,3 +276,11 @@ footer delete/refresh, "1 to 4 of 4". The page loads `GET /api/v1/api_key/`. Row
 peer)**, **Peer flow ID**, **A2A API key** = chip `TS_A2A_API_KEY`, **Coordinator token (audit)** =
 chip `TS_COORD_TOKEN`; output **Toolset**) wired into the Bounded Toolset's new input
 **A2A peer: TS-20 Production Manager**. Scrolling on the canvas zooms (40% → 26%).
+
+**Peer off / on (live checks, `08-16`, `08-18`).** Switching **Serve as an A2A agent** off and pressing
+**Save** returns the pane to **Draft** "Off. Nobody can reach it yet." with "Not reachable yet. Publish to
+expose it." and toast **Agent updated**; the card answers 404 and `a2a_enabled=false` (`flow_type` stays
+`agent`). Switching on + Save returns to **Live**. The Playground lists the adapter's inner call as a
+separate step **TS20 PRODUCTION MANAGER A2A** under **ASSESS PRODUCTION RELEASE** (`08-12`). Leaving the
+TS-10 editor after a Playground run showed the toast **Flow saved successfully!**; a direct URL navigation
+was instead blocked by the browser's "Leave site?" dialog, so the breadcrumb **TaskSprint** was used.

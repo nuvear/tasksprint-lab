@@ -533,7 +533,8 @@
                 ]
               }
             },
-            "tool_mode": false
+            "tool_mode": false,
+            "lf_version": "1.12.5"
           },
           "showNode": true,
           "type": "TaskSprintRunContext",
@@ -707,7 +708,7 @@
                 "api_editable": false,
                 "display_name": "API Key",
                 "dynamic": false,
-                "info": "Falls back to ANTHROPIC_API_KEY environment variable",
+                "info": "Overrides global provider settings. Leave blank to use your pre-configured API Key.",
                 "input_types": [],
                 "load_from_db": false,
                 "name": "api_key",
@@ -1326,7 +1327,7 @@
                 "type": "other",
                 "value": ""
               },
-              "is_refresh": false,
+              "is_refresh": true,
               "_frontend_node_flow_id": {
                 "value": "ec5b5dba-d7d2-4aeb-899c-016a3f66b4eb",
                 "input_types": []
@@ -1337,7 +1338,7 @@
               }
             },
             "tool_mode": false,
-            "last_updated": "2026-10-20T13:23:49.116Z",
+            "last_updated": "2026-10-20T13:40:45.743Z",
             "lf_version": "1.12.5"
           },
           "showNode": true,
@@ -2145,7 +2146,8 @@
                 ]
               }
             },
-            "tool_mode": false
+            "tool_mode": false,
+            "lf_version": "1.12.5"
           },
           "showNode": true,
           "type": "TaskSprintBoundedToolset",
@@ -2598,7 +2600,8 @@
               "is_refresh": false
             },
             "tool_mode": true,
-            "last_updated": "2026-10-20T13:23:49.117Z"
+            "last_updated": "2026-10-20T13:40:45.744Z",
+            "lf_version": "1.12.5"
           },
           "showNode": true,
           "type": "RunFlow",
@@ -3051,7 +3054,8 @@
               "is_refresh": false
             },
             "tool_mode": true,
-            "last_updated": "2026-10-20T13:23:49.118Z"
+            "last_updated": "2026-10-20T13:40:45.745Z",
+            "lf_version": "1.12.5"
           },
           "showNode": true,
           "type": "RunFlow",
@@ -3504,7 +3508,8 @@
               "is_refresh": false
             },
             "tool_mode": true,
-            "last_updated": "2026-10-20T13:23:49.119Z"
+            "last_updated": "2026-10-20T13:40:45.747Z",
+            "lf_version": "1.12.5"
           },
           "showNode": true,
           "type": "RunFlow",
@@ -3790,7 +3795,8 @@
                 ]
               }
             },
-            "tool_mode": false
+            "tool_mode": false,
+            "lf_version": "1.12.5"
           },
           "showNode": true,
           "type": "TaskSprintA2AAudit",

@@ -1,12 +1,13 @@
 # Build status
 
-**Last updated:** 20 October 2026, about 13:35 UTC (Phase 08 executed up to the redeploy stop point).
-**Current gate:** **GATE 08 not yet** — Phase 08 is **stopped: redeploy needed before live A2A
-assessment** (`docs/PHASE08_REPORT.md`). Branch `feature/phase-08-a2a` (not pushed). Done: A2A enabled
-proof, lab 0.5.0 code (readiness, canonical plans, audited A2A exchanges, commit-time run re-check;
-496 tests pass), TS-20 built and published (card `protocolVersion` 0.3.0), runtime key
-`TS_A2A_API_KEY`, unauthorized execution denied (401) / authorized accepted, Sprint Room A2A peer
-wired. Pending after the lab redeploy: live checks 08.6. GATE 07 evidence `docs/PHASE07_REPORT.md`.
+**Last updated:** 20 October 2026, about 13:45 UTC (Phase 08 executed).
+**Current gate:** **GATE 08 PASS** (`docs/PHASE08_REPORT.md`) on branch `feature/phase-08-a2a` (not
+pushed; lab redeployed by the orchestrator from `main` = `ea746f1`, lab 0.5.0). Genuine A2A JSON-RPC 0.3
+exchange Sprint Room → TS-20 captured with Task/context/artifact IDs, lab exchange records and
+Operations' own child-run trace; card `protocolVersion` 0.3.0; unauthorized execution 401; peer-off
+bounded failure; no plan, approval or release created (deploy blocked by the Phase 10 manifest gate).
+Open owner decisions: http:// card URL behind Railway TLS, handoff contract 1.1, tool name
+`assess_production_release`, Operations' 8-action budget pressure. GATE 07 evidence `docs/PHASE07_REPORT.md`.
 **Live-instance changes in Phase 08:** new flow `TS-20 Production Manager`
 `489890aa-4bd0-4641-b669-070f10e0922b` (`flow_type=agent`, `a2a_enabled=true`, published in the
 Agent pane); TS-10 updated in place (Bounded Toolset 1.1.0 + TaskSprint A2A Audit node); API key
@@ -263,15 +264,16 @@ Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
   A2A, Langflow or deployment results.
 
 
-## Phase 08 results (20 Oct 2026, 13:00–13:35 UTC) — interim
+## Phase 08 results (20 Oct 2026, 13:00–13:45 UTC)
 
 | Item | Status | Evidence |
 |---|---|---|
 | Server A2A flag | TESTED: enabled | `GET /api/v1/config` `a2a_enabled: true`; `GET /api/v1/a2a/agents` 200; pane without the "turned off" banner (`08-04`) |
-| Lab readiness / plans / exchanges / commit re-check | TESTED locally; **NOT DEPLOYED** | 496 tests pass; live lab `GET /v1/readiness` 404 until the redeploy |
-| TS-20 Production Manager | TESTED | `489890aa-4bd0-4641-b669-070f10e0922b`; authenticated A2A task completed with Operations' own tool trace (run `run_5ccf7f11…`) |
-| A2A-01 card discovery | PASS | `protocolVersion` 0.3.0, JSONRPC, apiKey `x-api-key`; card public (200 without key); `url` advertises http:// (finding 1) |
-| A2A-03 unauthorized execution | PASS | `message/send` no key 401, wrong key 401, valid key 200; `tasks/get` no key 401 |
-| A2A-02 authenticated assessment via Sprint Room | NOT RUN | needs the redeployed lab (exchange recording, readiness) |
-| A2A-04 unreachable peer / duplicate assessment | NOT RUN (live); unit-tested (plan dedup, exchange without task) | after redeploy |
-| Exports | DONE | `flows/20_operations.json` (sha256 `43c70f5e…`), `flows/10_sprint_room.json` (`dcb0ad3d…`); `import_flows.py --dry-run` keep ×6 |
+| Lab 0.5.0 (readiness, plans, exchanges, commit-time run re-check) | TESTED + DEPLOYED | 496 tests pass; live `GET /v1/readiness` 200 after the redeploy from `ea746f1` |
+| TS-20 Production Manager | TESTED | `489890aa-4bd0-4641-b669-070f10e0922b`, `flow_type=agent`, `a2a_enabled=true` (Live) |
+| A2A-01 card discovery | PASS | `protocolVersion` 0.3.0, JSONRPC, apiKey `x-api-key`; public card; `url` advertises http:// (finding 1) |
+| A2A-02 authenticated assessment | PASS | Task `2be4fd39-edf9-4c4b-971f-aaa8278acba0`, artifact `cd23cee4-…`, exchange `a2ax_fd510b2e…`, Operations child run `run_17ec87dd…`; blocked (manifest NOT_QUALIFIED), no plan |
+| A2A-03 unauthorized execution | PASS | `message/send` no key / wrong key 401 (13:22Z, 13:42Z); `tasks/get` no key 401 |
+| A2A-04 unreachable peer / duplicate | PASS | peer off → `PEER_UNAVAILABLE`, exchange `a2ax_06d6a76d…` without task, no artifact/release; same-turn duplicate → `DELEGATION_LIMIT`; plan dedup unit-tested |
+| No release | PASS | active `cand_561149e5…` revision 0, history 1 |
+| Exports | DONE | `flows/20_operations.json` (sha256 `c1919eaa…`), `flows/10_sprint_room.json` (`c49e26cf…`); `import_flows.py --dry-run` keep ×6 |

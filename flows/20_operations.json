@@ -707,7 +707,7 @@
                 "api_editable": false,
                 "display_name": "API Key",
                 "dynamic": false,
-                "info": "Overrides global provider settings. Leave blank to use your pre-configured API Key.",
+                "info": "Falls back to ANTHROPIC_API_KEY environment variable",
                 "input_types": [],
                 "load_from_db": false,
                 "name": "api_key",
@@ -1326,7 +1326,7 @@
                 "type": "other",
                 "value": ""
               },
-              "is_refresh": true,
+              "is_refresh": false,
               "_frontend_node_flow_id": {
                 "value": "489890aa-4bd0-4641-b669-070f10e0922b",
                 "input_types": []
@@ -1337,7 +1337,7 @@
               }
             },
             "tool_mode": false,
-            "last_updated": "2026-10-20T13:24:23.362Z",
+            "last_updated": "2026-10-20T13:39:55.457Z",
             "lf_version": "1.12.5"
           },
           "showNode": true,
