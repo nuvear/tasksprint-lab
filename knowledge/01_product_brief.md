@@ -1,8 +1,8 @@
 ---
 id: tasksprint-product-brief
-version: "1.0"
+version: "1.1"
 status: approved
-effective_from: "2026-10-01"
+effective_from: "2026-10-20"
 owner: TaskSprint human Product Owner
 classification: synthetic-workshop
 ---
@@ -28,6 +28,16 @@ AC3: Completing an already completed task is safe and has no additional data eff
 AC4: An unknown task ID returns TASK_NOT_FOUND and changes no task data.
 AC5: Add and list continue to work; list includes completed and incomplete tasks.
 AC6: Stored records and completion flags survive a backend restart.
+
+## Completion result contract
+The completion operation `complete(tasks, task_id)` returns exactly
+`{ok, code, tasks}`: `ok` is a boolean, `code` an UPPER_SNAKE result code, and
+`tasks` the full task list, each task exactly `{id, title, completed}`.
+Known incomplete task: `ok` true, code `COMPLETED`, that task's completed flag true,
+every other task unchanged.
+Already completed task: `ok` true, code `COMPLETED`, records unchanged (idempotent;
+repeating the operation has no additional data effect).
+Unknown task ID: `ok` false, code `TASK_NOT_FOUND`, records unchanged.
 
 ## Scope
 One completion feature only. No reminders, dates, notifications, authentication

@@ -183,3 +183,46 @@ Screenshots `06-01` … `06-28`. Detail and evidence IDs: `docs/PHASE06_REPORT.m
   type `str`; correct type is `other`). (`06-10` shows the fixed flow.)
 - Not observed in Phase 06: the custom-component code editor's save button label; the
   project-creation dialog (project created by API).
+
+## Phase 07 additions — Bounded Toolset, Run Flow tools, Sprint Room Playground (20 Oct 2026, 12:15–12:50 UTC)
+
+- **Custom component compile rule (1.12.5):** an input named after a component method is refused
+  by `POST /api/v1/custom_component` with "has input(s) 'run' named after a method of the component,
+  so `self.<name>` would return the method instead of the configured value. Rename the input."
+  (hence the toolset input is `run_info`, display name **Run**).
+- **Multiple outputs:** without `group_outputs=True` a node shows one output with a selector
+  (e.g. **Message ⌄**) and edges from the other outputs are not drawn; with it the Run Context
+  shows **Message**, **Run ID** and **Run** handles at once (`07-01`). A `DataInput` is rendered as
+  a JSON input (`_input_type: JSONInput`, accepts `Data`/`JSON`); the Data output type reads `JSON`.
+- **TaskSprint Bounded Toolset node** (`07-01`, `07-03`): title with shield icon, fields **Run\***,
+  **Role** (dropdown: product_owner, developer, qa, coordinator), **Role token** (green chip
+  `TS_QA_TOKEN ×`), for the coordinator **Run Flow: TS-01 Product Owner**, **Run Flow: TS-02
+  Developer**, **Run Flow: TS-03 QA** (cyan Tool handles); output **Toolset** (cyan) → Agent **Tools**.
+- **Run Flow (Beta) node** (`07-03`): fields **Flow Name** (dropdown with refresh; lists flows of
+  the same project), **Session ID** (advanced by default; made visible), **Actions** (after Tool
+  Mode: chip `TS-01-PRODUCT-OWNER_TOOL`), output **Toolset**. Serialized: type `RunFlow`,
+  `flow_name_selected` / `flow_id_selected`, dynamic fields `ChatInput-<id>~input_value`,
+  `…~should_store_message`, `…~sender`, `…~sender_name`, `…~session_id`, `…~context_id`, `…~files`;
+  only `~input_value` is a tool argument (inside `flow_tweak_data`). Tool Mode replaces the outputs
+  with `component_as_tool` and adds `tools_metadata` (name `TS-01-Product-Owner_tool`, description
+  "Tool designed to execute the flow 'TS-01 Product Owner'. Flow details: <flow description>.").
+  Selecting a flow and switching Tool Mode both go through `POST /api/v1/custom_component/update`.
+- **Canvas toolbar** (bottom): zoom percentage, **^**, a page icon, a shrink/expand-nodes toggle
+  (collapses every node to its title bar, `07-02`), **?**.
+- **Playground, Sprint Room:** tool rows read e.g. `GET SPRINT STATE 128ms`, `READ PREFERENCES`,
+  `SAVE PREFERENCE 98ms`, `READ TEST REPORT`, `ACCESSING ASK DEVELOPER 3982ms`, `ACCESSING TS-02-DEVELOPER
+  TOOL 50ms` (a delegation shows both the wrapper and the inner Run Flow tool); expanding a row shows
+  the raw JSON result, e.g. `{"error": {"code": "TEST_RUN_NOT_FOUND", …}}` (`07-09`). Header
+  **Finished in** with tokens and seconds (6.9K | 7.1s). The delegated specialist's own Chat Output
+  message is also displayed in the Sprint Room session, before the coordinator's answer (`07-04`).
+- **Sessions:** **+** next to **Sessions** creates "New Session 0", "New Session 1", … ; Default
+  Session's id is the flow id; API runs appear under their `session_id`. Child sessions created by
+  Run Flow appear in the specialist flow's Playground named after the coordinator run id
+  (`run_a1b79b91af531e…`, `07-12`).
+- **Agent behaviour observed:** the Agent can issue several tool calls in one step (parallel);
+  results may complete out of order.
+- **API tweaks:** `POST /api/v1/run/{flow_id}` with `tweaks: {"TaskSprintBoundedToolset-<id>":
+  {"max_actions": 2}}` (or `invocation_timeout_s`) was accepted for these custom-component fields
+  and applied to that run only.
+- Still not observed: the custom-component code editor's save button label; the label of the
+  node's advanced-settings panel in this phase (fields were set by the setup script).

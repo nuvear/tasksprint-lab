@@ -7,6 +7,8 @@ the `knowledge/` corpus, and does **not** change `skills/implement-todo-change/S
 `docs/PHASE04_REPORT.md` proposes the owner-approved way to put a short version of it
 into the skill (a new skill version, so the load event records a new hash).
 **Phase 05 update:** the owner approved that text; it is in `implement-todo-change` 1.1.0.
+**Phase 07 update:** `implement-todo-change` 1.2.0 adds the return-code contract
+(`COMPLETED`, `TASK_NOT_FOUND`; owner decision), mirrored in product brief 1.1.
 
 It deliberately contains no complete solution: the instructor reference fixture must
 not reach the Developer through documentation either.

@@ -14,8 +14,9 @@ from services.lab.store import Store
 from tests.conftest import headers
 
 NAMES = {"implement-todo-change", "release-and-recover"}
-# Owner-approved Phase 05 bump: implement-todo-change 1.1.0 adds the grammar limits.
-VERSIONS = {"implement-todo-change": "1.1.0", "release-and-recover": "1.0.0"}
+# Owner-approved bumps: 1.1.0 (Phase 05) adds the grammar limits; 1.2.0 (Phase 07) adds the
+# return-code contract {ok, code, tasks} with COMPLETED / TASK_NOT_FOUND.
+VERSIONS = {"implement-todo-change": "1.2.0", "release-and-recover": "1.0.0"}
 
 
 def test_list_is_metadata_only(seeded):
@@ -90,16 +91,17 @@ def test_skill_name_must_match_folder(tmp_path: Path):
         SkillCatalog(store, d).load()
 
 
-def test_implement_skill_1_1_0_carries_the_grammar_limits(seeded):
-    r = seeded.client.get("/v1/skills/implement-todo-change/1.1.0", headers=headers("developer"))
+def test_implement_skill_1_2_0_carries_the_grammar_limits(seeded):
+    r = seeded.client.get("/v1/skills/implement-todo-change/1.2.0", headers=headers("developer"))
     assert r.status_code == 200
     body = r.json()["body"]
     for text in ("Not allowed: any call", "no `-1` index", "`True != 1`", "4 KiB source, 256 syntax nodes",
                  "a validator rejection you cannot fix within this grammar"):
         assert text in body, text
     assert "def complete(tasks, task_id):" not in body  # limits only, never a solution
-    assert seeded.client.get("/v1/skills/implement-todo-change/1.0.0",
-                             headers=headers("developer")).status_code == 404  # not served from the file any more
+    for old in ("1.0.0", "1.1.0"):  # not served from the file any more
+        assert seeded.client.get(f"/v1/skills/implement-todo-change/{old}",
+                                 headers=headers("developer")).status_code == 404
 
 
 def test_version_bump_appends_to_a_database_holding_the_old_version(tmp_path: Path):
@@ -109,7 +111,7 @@ def test_version_bump_appends_to_a_database_holding_the_old_version(tmp_path: Pa
     shutil.copytree(REPO_ROOT / "skills", d)
     p = d / "implement-todo-change" / "SKILL.md"
     current = p.read_text()
-    p.write_text(current.replace('version: "1.1.0"', 'version: "1.0.0"').replace("Not allowed: any call", "x"))
+    p.write_text(current.replace('version: "1.2.0"', 'version: "1.0.0"').replace("Not allowed: any call", "x"))
     store = Store(str(tmp_path / "s.sqlite3"))
     store.migrate()
     SkillCatalog(store, d).load()
@@ -118,4 +120,13 @@ def test_version_bump_appends_to_a_database_holding_the_old_version(tmp_path: Pa
     assert {s["name"]: s["version"] for s in listed} == VERSIONS
     with store.read() as conn:
         rows = conn.execute("SELECT version FROM skills WHERE name = 'implement-todo-change' ORDER BY version").fetchall()
-    assert [r[0] for r in rows] == ["1.0.0", "1.1.0"]
+    assert [r[0] for r in rows] == ["1.0.0", "1.2.0"]
+
+
+def test_implement_skill_1_2_0_states_the_return_code_contract(seeded):
+    """Phase 07 owner decision: the success and not-found codes are documented, not a hidden test."""
+    body = seeded.client.get("/v1/skills/implement-todo-change/1.2.0", headers=headers("developer")).json()["body"]
+    for text in ("Return-code contract", "code `COMPLETED`", "code `TASK_NOT_FOUND`", "(idempotent)",
+                 "`tasks` is always the full list of `{id, title, completed}` records"):
+        assert text in body, text
+    assert "def complete(tasks, task_id):" not in body  # contract, never a solution

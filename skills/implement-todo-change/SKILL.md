@@ -2,7 +2,7 @@
 name: implement-todo-change
 description: Implement or repair one TaskSprint completion-function candidate against an approved story using the bounded Python-subset contract. Use for completion code changes, not release, infrastructure, or test-suite changes.
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   owner: "TaskSprint workshop maintainer"
 ---
 # Implement one to-do change
@@ -18,7 +18,7 @@ Missing prerequisites cause a needs-human-review result.
 3. Describe the smallest behavior change. Completion retains the target record;
    it does not delete it or silently modify unrelated task records.
 4. Write one `complete(tasks, task_id)` function within the allowed grammar.
-   Return JSON-shaped `{ok, code, tasks}`. Do not import, call a function, access
+   Return JSON-shaped `{ok, code, tasks}` (return-code contract below). Do not import, call a function, access
    attributes, execute a shell, or read files, environment variables or a network.
    Allowed: one `for` loop (no nesting, no comprehension inside it), `if/elif/else`,
    `return value`, single-target assignment to a name or `x[key]`, str/int/bool/None
@@ -27,6 +27,11 @@ Missing prerequisites cause a needs-human-review result.
    `len`, `range`, `.append`), attributes, arithmetic or unary minus (no `-1` index),
    `pass`/`break`/`continue`/docstrings, `is`, `<`/`>`. Equality is JSON equality:
    `True != 1`. Limits: 4 KiB source, 256 syntax nodes, 5,000 operations, 2 s.
+   Return-code contract (product brief 1.1, "Completion result contract"):
+   known incomplete task -> `ok` true, code `COMPLETED`, target completed true, others
+   unchanged; already completed -> `ok` true, code `COMPLETED`, records unchanged
+   (idempotent); unknown ID -> `ok` false, code `TASK_NOT_FOUND`, records unchanged.
+   `tasks` is always the full list of `{id, title, completed}` records.
 5. Submit the source with the actual base hash. Record the service-returned candidate
    ID/hash. A new revision creates a new candidate; never overwrite approved bytes.
 6. Hand the reference to QA. Do not certify your own candidate as passing.

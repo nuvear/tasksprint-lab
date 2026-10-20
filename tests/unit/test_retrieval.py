@@ -160,7 +160,7 @@ def test_current_retention_passage_is_returned_and_cited(seeded):
     assert body["status"] == "ok" and 1 <= len(body["results"]) <= 3
     top = body["results"][0]
     assert set(top["citation"]) == CITATION_KEYS
-    assert top["citation"]["doc_id"] == "tasksprint-product-brief" and top["citation"]["version"] == "1.0"
+    assert top["citation"]["doc_id"] == "tasksprint-product-brief" and top["citation"]["version"] == "1.1"
     assert top["citation"]["section"] in {"Completion story", "Acceptance criteria"}
     assert "retaining it" in top["text"] or "remains stored" in top["text"]
     with seeded.store().read() as conn:
@@ -187,7 +187,7 @@ def test_search_records_a_retrieval_event_with_citations(seeded):
     with seeded.store().read() as conn:
         ev = conn.execute("SELECT * FROM events WHERE event_id = ?", (body["event_id"],)).fetchone()
     assert ev["action"] == "knowledge.search" and ev["actor_role"] == "product_owner" and ev["outcome"] == "ok"
-    assert "tasksprint-product-brief@1.0#Acceptance criteria" in ev["details_json"]
+    assert "tasksprint-product-brief@1.1#Acceptance criteria" in ev["details_json"]
 
 
 def test_search_is_role_scoped(seeded):
@@ -245,3 +245,34 @@ def test_lab_image_ships_only_corpus_skills_and_code():
     copies = [line.split()[1] for line in text.splitlines() if line.startswith("COPY ") and "--from" not in line]
     assert "knowledge/" in copies and "skills/" in copies
     assert "." not in copies and not any(c.startswith(("tests", "docs", ".local", "langflow")) for c in copies)
+
+
+def test_brief_1_1_states_the_completion_result_contract(seeded):
+    """Phase 07: brief 1.1 documents COMPLETED / TASK_NOT_FOUND; retrieval cites version 1.1."""
+    body = search(seeded, "completion result contract code COMPLETED").json()
+    assert body["status"] == "ok"
+    top = body["results"][0]
+    assert top["citation"]["doc_id"] == "tasksprint-product-brief" and top["citation"]["version"] == "1.1"
+    assert top["citation"]["section"] == "Completion result contract"
+    assert "`COMPLETED`" in top["text"] and "`TASK_NOT_FOUND`" in top["text"]
+
+
+def test_brief_version_bump_appends_to_a_database_holding_1_0(tmp_path, corpus):
+    """The deployed lab volume holds brief 1.0; the bumped 1.1 file is appended, 1.0 rows are kept but no
+    longer searched (only the current corpus file is active), so there is no conflicting-evidence abstention."""
+    p = corpus / "01_product_brief.md"
+    current = p.read_text()
+    start, end = current.index("## Completion result contract"), current.index("## Scope")
+    p.write_text(current[:start].replace('version: "1.1"', 'version: "1.0"')
+                 .replace('effective_from: "2026-10-20"', 'effective_from: "2026-10-01"') + current[end:])
+    kb = kb_for(tmp_path, corpus)
+    p.write_text(current)
+    assert kb.ingest()["documents_added"] == 1
+    with kb.store.read() as conn:
+        rows = conn.execute("SELECT version FROM documents WHERE doc_id = 'tasksprint-product-brief'"
+                            " ORDER BY version").fetchall()
+        assert [r[0] for r in rows] == ["1.0", "1.1"]
+        res = kb.search(conn, "unknown task id error")
+    assert res["status"] == "ok"
+    assert {r["citation"]["version"] for r in res["results"]
+            if r["citation"]["doc_id"] == "tasksprint-product-brief"} == {"1.1"}

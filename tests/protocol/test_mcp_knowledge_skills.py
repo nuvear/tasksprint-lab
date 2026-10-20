@@ -37,7 +37,7 @@ def test_current_retention_passage_is_returned_with_citation(stack):
             res = ok(await s.call_tool("search_approved_knowledge",
                                        {"query": "keep completed task records in the list"}))
             top = res["result"]["results"][0]
-            assert top["citation"]["doc_id"] == "tasksprint-product-brief" and top["citation"]["version"] == "1.0"
+            assert top["citation"]["doc_id"] == "tasksprint-product-brief" and top["citation"]["version"] == "1.1"
             assert top["citation"]["section"] in {"Completion story", "Acceptance criteria"}
             assert set(top["citation"]) == {"doc_id", "version", "section", "owner", "hash"}
             assert len(res["result"]["results"]) <= 3

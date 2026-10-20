@@ -1,10 +1,14 @@
 # Build status
 
-**Last updated:** 20 October 2026, about 12:05 UTC (Phase 06 executed).
-**Current gate:** **GATE 06 evidence produced** (`docs/PHASE06_REPORT.md`) on branch
-`feature/phase-06-langflow`; two owner decisions open: per-run budget header cannot reach the
-native MCP Tools node (Phase 07 blocker, RUN_EXPIRED observed) and the undocumented `COMPLETED`
-success code. GATE 05 PASSED (`docs/PHASE05_REPORT.md`). GATE 04/03/02/01 earlier the same day.
+**Last updated:** 20 October 2026, about 12:50 UTC (Phase 07 executed).
+**Current gate:** **GATE 07 evidence produced** (`docs/PHASE07_REPORT.md`) on branch
+`feature/phase-07-sprint-room` (not pushed). Owner decisions applied: bounded toolset (Phase 06
+deviation 1, option a) and the documented `COMPLETED` contract (brief 1.1, skill 1.2.0 — **served
+only after the lab is redeployed**). Open: lab re-check before commit (finding 4), Developer without
+confirmed scope (finding 7). GATE 06 evidence `docs/PHASE06_REPORT.md`; GATE 05 PASSED.
+**Live-instance changes in Phase 07:** TS-01/02/03 rewired (MCP Tools → TaskSprint Bounded Toolset,
+Run Context 1.1.0; ids kept); new flow `TS-10 Sprint Room` `ec5b5dba-d7d2-4aeb-899c-016a3f66b4eb`.
+No globals, MCP servers, Railway, A2A or TS-20/TS-90 changes.
 **Live-instance changes in Phase 06:** project `TaskSprint`; flows TS-30, TS-01, TS-02, TS-03;
 7 globals (`TASKSPRINT_API_BASE`, six role tokens); 6 MCP servers; Langflow auto-created 6
 `MCP_*` Credential globals and the project MCP server `lf-tasksprint`. Railway untouched.
@@ -156,6 +160,23 @@ in Langflow, Railway, Postgres or `nuvear/langflow-railway` was touched; nothing
 | Post-deploy checks 05.5 (HTTPS, 401, persistence after lab redeploy) | **NOT RUN** | `docs/RAILWAY_SETUP.md` step 4 |
 | Gate command `uv run pytest -q tests/unit tests/security tests/integration tests/protocol` | TESTED: **463 passed** | 315 unit + 92 security + 13 integration + 43 protocol, 0 failed, 0 skipped |
 
+## Phase 07 results (20 Oct 2026, live Langflow + deployed lab, owner's Chrome)
+
+Full detail: `docs/PHASE07_REPORT.md`; UI labels: `docs/OBSERVED_UI.md` (Phase 07 section).
+
+| Item | Status | Evidence |
+|---|---|---|
+| `components/bounded_toolset.py` 1.0.0 (official `mcp` SDK in Langflow; fresh session per call; `X-TaskSprint-Run`) | **TESTED end to end**; static checks in `tests/unit/test_components_static.py` | tool calls charged to the Run Context run (`run_7c571311…`); no pooled-session run |
+| `components/run_context.py` 1.1.0 (Run output, child runs from delegated sessions) | **TESTED** | child `run.create` with `parent_run_id`, depth 1, for every delegation |
+| TS-01/02/03 switched from MCP Tools to the toolset (ids kept; Phase 06 exports kept as `*.phase06.json`) | **TESTED** | Card 06 prompts re-run; 2nd QA prompt 2+ min later: new run, no `RUN_EXPIRED` |
+| TS-10 Sprint Room `ec5b5dba-d7d2-4aeb-899c-016a3f66b4eb` (3 Run Flow tools → TS-01/02/03 only, coordinator MCP tools) | **TESTED** | `07-03`; exports `flows/10_sprint_room.json` |
+| 07.3 story proposal (scope pending), preference, fresh-chat resume = backend | **TESTED** | ST-001 `evt_2bc91b77…`; `memory.save` `evt_c106f633…`; New Session 0 answer = `/v1/state` + `/v1/memory` |
+| 07.4 failing read / budget 2 / tree 24 / timeout / expired-run write / one repair / repair limit / no progress | **TESTED** | `evt_885f2e7a…`; message `5818078c…`; `evt_e87df79e…`, `evt_b82a9ea6…`; message `cc227974…`; `req_917c1dc4…`; `tr_35be6859…` fail → `tr_b2139a09…` pass; REPAIR_BUDGET_EXHAUSTED; NO_PROGRESS |
+| Brief 1.1 + skill 1.2.0 (return-code contract) | **TESTED in unit/protocol tests; NOT SERVED** until the lab is redeployed (merge to main → Railway rebuild) | `knowledge/01_product_brief.md`, `skills/implement-todo-change/SKILL.md` |
+| Cross-turn repair limit | **DEFERRED** | lab `repair_count` applies after human scope confirmation (Phase 09) |
+| Lab re-check of the run inside write transactions | **PROPOSED** (owner decision) | PHASE07 finding 4 |
+| Gate command `uv run pytest -q tests/unit tests/security tests/integration tests/protocol` | TESTED: **471 passed** | 0 failed, 0 skipped |
+
 ## Phase 06 results (20 Oct 2026, live Langflow + deployed lab, owner's Chrome)
 
 Full detail: `docs/PHASE06_REPORT.md`; UI labels: `docs/OBSERVED_UI.md` (Phase 06 section).
@@ -171,7 +192,7 @@ Full detail: `docs/PHASE06_REPORT.md`; UI labels: `docs/OBSERVED_UI.md` (Phase 0
 | TS-03 QA protected suite for that hash | **TESTED** (candidate fails TC-01) | `tr_38d1e08a937945f3346b977b`, runner 0.3.0, suite `051dfb58…` |
 | Identity / impersonation (SEC-02 via Langflow + probes) | **TESTED** | `scripts/phase06_checks.py --probes`: 21 pass, 0 fail |
 | Sanitized exports `flows/{01,02,03,30}_*.json` | **TESTED** (scan clean) | `import_flows.py --export`; re-import onto same instance + run PASS; fresh-instance import NOT RUN |
-| Per-run budget header to MCP Tools | **BLOCKED (design)** | no input handle on MCP Tools Headers; pooled session → `RUN_EXPIRED` after 90 s (`06-27`) — Phase 07 |
+| Per-run budget header to MCP Tools | **RESOLVED in Phase 07** | was BLOCKED (`06-27`); replaced by the bounded toolset |
 | Isolated `test-specialists` workspace | **NOT AVAILABLE** | allowed workspaces = demo-001 only; checks ran in demo-001; reset list in report |
 
 ## Phase 01 results (20 Oct 2026, live instance, owner's Chrome)
@@ -202,16 +223,16 @@ Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
 | Isolated runner, protected app tests | BUILT LOCALLY, TESTED; Compose BLOCKED | 03 (see above) |
 | MCP, retrieval, skills | TESTED through Langflow (Phase 06) | 04, 06 |
 | Railway services | DEPLOYED, GATE 05 PASSED | 05 |
-| Live MCP / A2A / HITL protocol tests | MCP: TESTED locally (SDK client ↔ lab), not through Langflow; A2A/HITL NOT RUN | 04–09 |
-| Validated flow exports | TS-01/02/03/30 exported + same-instance re-import TESTED; fresh instance NOT RUN | 06, 11 |
+| Live MCP / A2A / HITL protocol tests | MCP: TESTED through Langflow (native client Phase 06, SDK in the bounded toolset Phase 07); A2A/HITL NOT RUN | 04–09 |
+| Validated flow exports | TS-01/02/03/10/30 exported; same-instance dry-run keep ×5; fresh instance NOT RUN | 06, 07, 11 |
 | Application / security / agent evaluations | NOT RUN | 03–11 |
 | Two-hour rehearsal | NOT RUN | 12 |
 
 ## Stop conditions carried forward
 
-- Phase 07 must solve the per-invocation MCP run budget (PHASE06 deviation 1) before relying
-  on harness budgets; otherwise a role's tools return RUN_EXPIRED 90 s after first use until
-  Langflow's pooled MCP session idles out (400 s).
+- Redeploy the lab (merge to main → Railway rebuild) before relying on brief 1.1 / skill 1.2.0;
+  then re-run the Developer and QA specialist checks (PHASE07 T1).
+- Cross-turn repair limit depends on the story stage machine (human scope confirmation, Phase 09).
 - Keep TS-90 off the project MCP server `lf-tasksprint` (Phase 09).
 
 - A2A work (Phase 08) requires the owner to approve enabling the server A2A flag and a

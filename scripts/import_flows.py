@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create or re-import the TaskSprint Phase 06 Langflow flows (Architecture A3, A13).
+"""Create or re-import the TaskSprint Langflow flows, Phases 06-07 (Architecture A3, A13).
 
   uv run --frozen --no-dev python scripts/import_flows.py --dry-run [--source exports|skeleton]
   uv run --frozen --no-dev python scripts/import_flows.py --apply   [--source exports|skeleton] [--force]
@@ -51,13 +51,17 @@ FLOWS = (
      "tasksprint-product-owner"),
     ("02_developer.json", "TS-02 Developer", "agent", "developer.md", "TS_DEV_TOKEN", "tasksprint-developer"),
     ("03_qa.json", "TS-03 QA", "agent", "qa.md", "TS_QA_TOKEN", "tasksprint-qa"),
+    # Phase 07: built by scripts/phase07_flows.py; listed here for export and re-import (after 01-03).
+    ("10_sprint_room.json", "TS-10 Sprint Room", "sprint", "coordinator.md", "TS_COORD_TOKEN", None),
 )
 DESCRIPTIONS = {
     "TS-30 To-do App": "TaskSprint Phase 06: deterministic To-do App console (no model).",
-    "TS-01 Product Owner": "TaskSprint Phase 06: Product Owner specialist agent (product_owner MCP tools).",
-    "TS-02 Developer": "TaskSprint Phase 06: Developer specialist agent (developer MCP tools).",
-    "TS-03 QA": "TaskSprint Phase 06: QA specialist agent (qa MCP tools).",
+    "TS-01 Product Owner": "TaskSprint Phase 07: Product Owner specialist agent (bounded product_owner toolset).",
+    "TS-02 Developer": "TaskSprint Phase 07: Developer specialist agent (bounded developer toolset).",
+    "TS-03 QA": "TaskSprint Phase 07: QA specialist agent (bounded qa toolset).",
+    "TS-10 Sprint Room": "TaskSprint Phase 07: Scrum Coordinator agent with three bounded specialist delegations.",
 }
+ALLOWED_RUN_FLOW_TARGETS = ("TS-01 Product Owner", "TS-02 Developer", "TS-03 QA")
 SECRET_PATTERNS = [re.compile(p) for p in (
     r"sk-[A-Za-z0-9_-]{16,}", r"sk-ant-[A-Za-z0-9_-]{16,}", r"AKIA[0-9A-Z]{16}", r"xox[abpr]-[A-Za-z0-9-]{10,}",
     r"gh[pousr]_[A-Za-z0-9]{20,}", r"Bearer\s+[A-Za-z0-9_\-.]{20,}", r"ts_[A-Za-z0-9_-]{30,}")]
@@ -150,7 +154,24 @@ def compile_component(c, path: Path) -> tuple[str, dict]:
     return body["type"], body["data"]
 
 
+def remap_run_flows(data: dict, existing: dict[str, dict]) -> None:
+    """Point each Run Flow node at the CURRENT id of its selected flow (ids differ per instance).
+    Only the three specialist flows are accepted as Run Flow targets (Architecture A3)."""
+    for n in data["nodes"]:
+        if n["data"]["type"] != "RunFlow":
+            continue
+        tpl = n["data"]["node"]["template"]
+        target = tpl["flow_name_selected"]["value"]
+        if target not in ALLOWED_RUN_FLOW_TARGETS:
+            raise SetupError(f"Run Flow node {n['id']} targets {target!r}; only {ALLOWED_RUN_FLOW_TARGETS} allowed")
+        if target not in existing:
+            raise SetupError(f"Run Flow target {target!r} must be imported first")
+        tpl["flow_id_selected"]["value"] = existing[target]["id"]
+
+
 def build_skeleton(c, name: str, kind: str, prompt: str | None, var: str) -> dict:
+    if kind == "sprint":
+        raise SetupError("TS-10 Sprint Room is built by scripts/phase07_flows.py, not --source skeleton")
     ts00 = check(c.get(f"/api/v1/flows/{TS00_ID}"), "read TS-00 skeleton")
     by_type = {n["data"]["type"]: n for n in ts00["data"]["nodes"]}
     chat_in = copy.deepcopy(by_type["ChatInput"]["data"]["node"])
@@ -258,6 +279,7 @@ def main(argv: list[str] | None = None) -> int:
                     if doc.get("name") != name:
                         raise SetupError(f"flows/{fname} has name {doc.get('name')!r}, expected {name!r}")
                     data = doc["data"]
+                    remap_run_flows(data, existing)
                 else:
                     data = build_skeleton(c, name, kind, prompt, var)
                 b = bindings(data)

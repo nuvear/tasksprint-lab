@@ -1,6 +1,6 @@
 {
   "name": "TS-01 Product Owner",
-  "description": "TaskSprint Phase 06: Product Owner specialist agent (product_owner MCP tools).",
+  "description": "TaskSprint Phase 07: Product Owner specialist agent (bounded product_owner toolset).",
   "icon": null,
   "icon_bg_color": null,
   "gradient": null,
@@ -352,7 +352,7 @@
                 "list": false,
                 "show": true,
                 "multiline": true,
-                "value": "# TaskSprint Run Context: trusted Langflow custom component (Architecture A8 POST /v1/runs, A9).\n# Creates one server-issued run per flow invocation for this role, passes the chat message\n# through unchanged, and exposes the run ID as a separate output. The role comes from the\n# bound Credential global, the workspace from flow configuration, the budget from the server.\n# Version 1.0.0. Source of truth: tasksprint-lab/components/run_context.py\nfrom __future__ import annotations\n\nimport re\nfrom urllib.parse import urlparse\n\nimport httpx\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import MessageInput, MessageTextInput, Output, SecretStrInput\nfrom lfx.schema.message import Message\n\nADAPTER_VERSION = \"run_context/1.0.0\"\nRUNS_PATH = \"/v1/runs\"\nWORKSPACE_RE = re.compile(r\"^[a-z0-9][a-z0-9-]{2,63}$\")\nCONV_SAFE = re.compile(r\"[^A-Za-z0-9_.:-]\")\n\n\nclass TaskSprintRunContext(Component):\n    display_name = \"TaskSprint Run Context\"\n    description = (\"Trusted runtime adapter: issues a bounded server-side run (POST /v1/runs) for this role \"\n                   \"and Playground session, then passes the message through unchanged.\")\n    icon = \"fingerprint\"\n    name = \"TaskSprintRunContext\"\n\n    inputs = [\n        MessageInput(name=\"input_value\", display_name=\"Message\", required=True),\n        MessageTextInput(name=\"api_base\", display_name=\"TaskSprint API base\", value=\"TASKSPRINT_API_BASE\",\n                         load_from_db=True, advanced=True,\n                         info=\"Bind the Generic global TASKSPRINT_API_BASE (https origin, no path).\"),\n        SecretStrInput(name=\"role_token\", display_name=\"Role token\", value=\"\", load_from_db=True,\n                       info=\"Bind this agent's Credential global (TS_PO_TOKEN, TS_DEV_TOKEN or TS_QA_TOKEN).\"),\n        MessageTextInput(name=\"workspace\", display_name=\"Workspace\", value=\"demo-001\", advanced=True),\n    ]\n    outputs = [\n        Output(display_name=\"Message\", name=\"message\", method=\"pass_message\"),\n        Output(display_name=\"Run ID\", name=\"run_id\", method=\"run_id_message\"),\n    ]\n\n    def _run(self) -> dict:\n        cached = getattr(self, \"_ts_run\", None)\n        if cached is not None:\n            return cached\n        base = (self.api_base or \"\").strip().rstrip(\"/\")\n        u = urlparse(base)\n        if u.scheme != \"https\" or not u.hostname or u.path or u.query or u.fragment or u.username:\n            raise ValueError(\"TASKSPRINT_API_BASE must be an https origin without a path\")\n        workspace = (self.workspace or \"\").strip()\n        if not WORKSPACE_RE.match(workspace):\n            raise ValueError(\"workspace id is invalid\")\n        token = self.role_token or \"\"\n        if len(token) < 32:\n            raise ValueError(\"role token is not bound (Credential global variable missing)\")\n        session = str(getattr(self.graph, \"session_id\", \"\") or getattr(self.graph, \"flow_id\", \"\") or \"default\")\n        conversation = (\"lf-\" + CONV_SAFE.sub(\"-\", session))[:64]\n        resp = httpx.post(base + RUNS_PATH, json={\"conversation_id\": conversation}, timeout=20.0,\n                          headers={\"Authorization\": f\"Bearer {token}\", \"X-TaskSprint-Workspace\": workspace,\n                                   \"User-Agent\": ADAPTER_VERSION}, follow_redirects=False)\n        try:\n            body = resp.json()\n        except ValueError:\n            body = {}\n        if resp.status_code != 201 or \"run_id\" not in body:\n            code = (body.get(\"error\") or {}).get(\"code\", f\"HTTP_{resp.status_code}\")\n            raise ValueError(f\"TaskSprint run context refused: {code}\")\n        self._ts_run = {k: body.get(k) for k in (\"run_id\", \"role\", \"session_namespace\", \"max_actions\",\n                                                  \"deadline_at\", \"depth\")}\n        self.status = self._ts_run\n        return self._ts_run\n\n    def pass_message(self) -> Message:\n        self._run()\n        return self.input_value if isinstance(self.input_value, Message) else Message(text=str(self.input_value or \"\"))\n\n    def run_id_message(self) -> Message:\n        return Message(text=self._run()[\"run_id\"])\n",
+                "value": "# TaskSprint Run Context: trusted Langflow custom component (Architecture A8 POST /v1/runs, A9).\n# Creates one server-issued run per flow invocation for this role, passes the chat message\n# through unchanged, and exposes the run as separate outputs (Run ID text, Run data for the\n# TaskSprint Bounded Toolset). The role comes from the bound Credential global, the workspace\n# from flow configuration, the budget from the server.\n# Lineage (1.1.0): when this flow is run by the Sprint Room's Run Flow tool, the Run Flow's\n# Session ID is wired to the coordinator's Run ID, so this flow's session id is a server-issued\n# run id. The run is then created as that parent's CHILD (parent_run_id): the lab checks that the\n# parent exists in this workspace and is live, adds one to the depth (max 2), shares the parent\n# tree's 24-action budget and caps the deadline at the parent's. A forged session id cannot add\n# budget: it can only join an existing live tree.\n# Version 1.1.0. Source of truth: tasksprint-lab/components/run_context.py\nfrom __future__ import annotations\n\nimport re\nfrom urllib.parse import urlparse\n\nimport httpx\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import MessageInput, MessageTextInput, Output, SecretStrInput\nfrom lfx.schema.data import Data\nfrom lfx.schema.message import Message\n\nADAPTER_VERSION = \"run_context/1.1.0\"\nRUNS_PATH = \"/v1/runs\"\nWORKSPACE_RE = re.compile(r\"^[a-z0-9][a-z0-9-]{2,63}$\")\nRUN_RE = re.compile(r\"^run_[0-9a-f]{32}$\")\nCONV_SAFE = re.compile(r\"[^A-Za-z0-9_.:-]\")\nRUN_FIELDS = (\"run_id\", \"role\", \"session_namespace\", \"parent_run_id\", \"root_run_id\", \"depth\", \"max_actions\",\n              \"tree_max_actions\", \"deadline_at\")\n\n\nclass TaskSprintRunContext(Component):\n    display_name = \"TaskSprint Run Context\"\n    description = (\"Trusted runtime adapter: issues a bounded server-side run (POST /v1/runs) for this role \"\n                   \"and Playground session (a child run when delegated), then passes the message through unchanged.\")\n    icon = \"fingerprint\"\n    name = \"TaskSprintRunContext\"\n\n    inputs = [\n        MessageInput(name=\"input_value\", display_name=\"Message\", required=True),\n        MessageTextInput(name=\"api_base\", display_name=\"TaskSprint API base\", value=\"TASKSPRINT_API_BASE\",\n                         load_from_db=True, advanced=True,\n                         info=\"Bind the Generic global TASKSPRINT_API_BASE (https origin, no path).\"),\n        SecretStrInput(name=\"role_token\", display_name=\"Role token\", value=\"\", load_from_db=True,\n                       info=\"Bind this agent's Credential global (TS_COORD_TOKEN, TS_PO_TOKEN, TS_DEV_TOKEN, TS_QA_TOKEN).\"),\n        MessageTextInput(name=\"workspace\", display_name=\"Workspace\", value=\"demo-001\", advanced=True),\n    ]\n    outputs = [\n        # group_outputs: show all three handles at once (the editor otherwise shows one selected output\n        # and hides edges from the others).\n        Output(display_name=\"Message\", name=\"message\", method=\"pass_message\", group_outputs=True),\n        Output(display_name=\"Run ID\", name=\"run_id\", method=\"run_id_message\", group_outputs=True),\n        Output(display_name=\"Run\", name=\"run\", method=\"run_data\", group_outputs=True),\n    ]\n\n    def _run(self) -> dict:\n        cached = getattr(self, \"_ts_run\", None)\n        if cached is not None:\n            return cached\n        base = (self.api_base or \"\").strip().rstrip(\"/\")\n        u = urlparse(base)\n        if u.scheme != \"https\" or not u.hostname or u.path or u.query or u.fragment or u.username:\n            raise ValueError(\"TASKSPRINT_API_BASE must be an https origin without a path\")\n        workspace = (self.workspace or \"\").strip()\n        if not WORKSPACE_RE.match(workspace):\n            raise ValueError(\"workspace id is invalid\")\n        token = self.role_token or \"\"\n        if len(token) < 32:\n            raise ValueError(\"role token is not bound (Credential global variable missing)\")\n        session = str(getattr(self.graph, \"session_id\", \"\") or getattr(self.graph, \"flow_id\", \"\") or \"default\")\n        conversation = (\"lf-\" + CONV_SAFE.sub(\"-\", session))[:64]\n        body_in: dict = {\"conversation_id\": conversation}\n        if RUN_RE.match(session):\n            body_in[\"parent_run_id\"] = session\n        resp = httpx.post(base + RUNS_PATH, json=body_in, timeout=20.0,\n                          headers={\"Authorization\": f\"Bearer {token}\", \"X-TaskSprint-Workspace\": workspace,\n                                   \"User-Agent\": ADAPTER_VERSION}, follow_redirects=False)\n        try:\n            body = resp.json()\n        except ValueError:\n            body = {}\n        if resp.status_code != 201 or \"run_id\" not in body:\n            code = (body.get(\"error\") or {}).get(\"code\", f\"HTTP_{resp.status_code}\")\n            raise ValueError(f\"TaskSprint run context refused: {code}\")\n        self._ts_run = {k: body.get(k) for k in RUN_FIELDS}\n        self.status = self._ts_run\n        return self._ts_run\n\n    def pass_message(self) -> Message:\n        self._run()\n        return self.input_value if isinstance(self.input_value, Message) else Message(text=str(self.input_value or \"\"))\n\n    def run_id_message(self) -> Message:\n        return Message(text=self._run()[\"run_id\"])\n\n    def run_data(self) -> Data:\n        return Data(data=dict(self._run()))\n",
                 "fileTypes": [],
                 "file_path": "",
                 "password": false,
@@ -403,7 +403,7 @@
                 "api_editable": false,
                 "input_types": [],
                 "dynamic": false,
-                "info": "Bind this agent's Credential global (TS_PO_TOKEN, TS_DEV_TOKEN or TS_QA_TOKEN).",
+                "info": "Bind this agent's Credential global (TS_COORD_TOKEN, TS_PO_TOKEN, TS_DEV_TOKEN, TS_QA_TOKEN).",
                 "title_case": false,
                 "track_in_telemetry": false,
                 "password": true,
@@ -437,9 +437,10 @@
                 "_input_type": "MessageTextInput"
               }
             },
-            "description": "Trusted runtime adapter: issues a bounded server-side run (POST /v1/runs) for this role and Playground session, then passes the message through unchanged.",
+            "description": "Trusted runtime adapter: issues a bounded server-side run (POST /v1/runs) for this role and Playground session (a child run when delegated), then passes the message through unchanged.",
             "icon": "fingerprint",
             "base_classes": [
+              "JSON",
               "Message"
             ],
             "display_name": "TaskSprint Run Context",
@@ -465,7 +466,7 @@
                 "required_inputs": null,
                 "allows_loop": false,
                 "loop_types": null,
-                "group_outputs": false,
+                "group_outputs": true,
                 "options": null,
                 "tool_mode": true
               },
@@ -473,6 +474,7 @@
                 "types": [
                   "Message"
                 ],
+                "selected": "Message",
                 "name": "run_id",
                 "hidden": null,
                 "display_name": "Run ID",
@@ -482,7 +484,25 @@
                 "required_inputs": null,
                 "allows_loop": false,
                 "loop_types": null,
-                "group_outputs": false,
+                "group_outputs": true,
+                "options": null,
+                "tool_mode": true
+              },
+              {
+                "types": [
+                  "JSON"
+                ],
+                "selected": "JSON",
+                "name": "run",
+                "hidden": null,
+                "display_name": "Run",
+                "method": "run_data",
+                "value": "__UNDEFINED__",
+                "cache": true,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": true,
                 "options": null,
                 "tool_mode": true
               }
@@ -498,7 +518,7 @@
             "edited": false,
             "metadata": {
               "module": "custom_components.tasksprint_run_context",
-              "code_hash": "1ba2ef5e81f5",
+              "code_hash": "eb1aeda88fb0",
               "dependencies": {
                 "total_dependencies": 2,
                 "dependencies": [
@@ -513,8 +533,7 @@
                 ]
               }
             },
-            "tool_mode": false,
-            "lf_version": "1.12.5"
+            "tool_mode": false
           },
           "showNode": true,
           "type": "TaskSprintRunContext",
@@ -1641,63 +1660,373 @@
         }
       },
       {
-        "id": "MCP-Bnivv",
+        "id": "TaskSprintBoundedToolset-hEZdx",
         "type": "genericNode",
         "position": {
-          "x": -147.29028086487102,
-          "y": -192.67941846611916
+          "x": 330,
+          "y": -430
         },
+        "selected": false,
         "data": {
           "node": {
-            "base_classes": [
-              "Table"
-            ],
-            "beta": false,
-            "conditional_paths": [],
-            "custom_fields": {},
-            "description": "Connect to an MCP server to use its tools.",
-            "display_name": "MCP Tools",
-            "documentation": "https://docs.langflow.org/mcp-tools",
-            "edited": false,
-            "field_order": [
-              "mcp_server",
-              "use_cache",
-              "verify_ssl",
-              "headers",
-              "tool_execution_timeout",
-              "tool",
-              "tool_placeholder"
-            ],
-            "frozen": false,
-            "icon": "Mcp",
-            "legacy": false,
-            "metadata": {
-              "code_hash": "9c81bfe8e4e5",
-              "dependencies": {
-                "dependencies": [
-                  {
-                    "name": "langchain_core",
-                    "version": "1.5.1"
-                  },
-                  {
-                    "name": "pydantic",
-                    "version": "2.13.4"
-                  },
-                  {
-                    "name": "lfx",
-                    "version": null
-                  },
-                  {
-                    "name": "langflow",
-                    "version": null
-                  }
+            "template": {
+              "_type": "Component",
+              "developer_flow": {
+                "trace_as_metadata": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": false,
+                "name": "developer_flow",
+                "value": "",
+                "display_name": "Run Flow: TS-02 Developer",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [
+                  "Tool"
                 ],
-                "total_dependencies": 4
+                "dynamic": false,
+                "info": "Coordinator only: the Toolset of a Run Flow set to TS-02 Developer.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "other",
+                "_input_type": "HandleInput"
               },
-              "module": "lfx.components.models_and_agents.mcp_component.MCPToolsComponent"
+              "product_owner_flow": {
+                "trace_as_metadata": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": false,
+                "name": "product_owner_flow",
+                "value": "",
+                "display_name": "Run Flow: TS-01 Product Owner",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [
+                  "Tool"
+                ],
+                "dynamic": false,
+                "info": "Coordinator only: the Toolset of a Run Flow set to TS-01 Product Owner.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "other",
+                "_input_type": "HandleInput"
+              },
+              "qa_flow": {
+                "trace_as_metadata": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": false,
+                "name": "qa_flow",
+                "value": "",
+                "display_name": "Run Flow: TS-03 QA",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [
+                  "Tool"
+                ],
+                "dynamic": false,
+                "info": "Coordinator only: the Toolset of a Run Flow set to TS-03 QA.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "other",
+                "_input_type": "HandleInput"
+              },
+              "run_info": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "trace_as_input": true,
+                "override_skip": false,
+                "required": true,
+                "placeholder": "",
+                "show": true,
+                "name": "run_info",
+                "value": "",
+                "display_name": "Run",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [
+                  "Data",
+                  "JSON"
+                ],
+                "dynamic": false,
+                "info": "Connect the 'Run' output of the TaskSprint Run Context in this flow.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "other",
+                "_input_type": "JSONInput"
+              },
+              "api_base": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "api_base",
+                "value": "TASKSPRINT_API_BASE",
+                "display_name": "TaskSprint API base",
+                "advanced": true,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "Bind the Generic global TASKSPRINT_API_BASE.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              },
+              "code": {
+                "type": "code",
+                "required": true,
+                "placeholder": "",
+                "list": false,
+                "show": true,
+                "multiline": true,
+                "value": "# TaskSprint Bounded Toolset: trusted Langflow custom component (Architecture A8, A9; Phase 07).\n# Exposes exactly the authenticated role's allowlisted TaskSprint MCP tools to an Agent, plus (for\n# the coordinator only) three fixed delegation tools wrapping the Run Flow tools of TS-01/02/03.\n# Every MCP tool call opens a fresh Streamable-HTTP MCP session that carries the server-issued run\n# from the TaskSprint Run Context (X-TaskSprint-Run), so each Agent invocation is charged to its own\n# run. The harness counts actions (tool calls and delegations, not model iterations), enforces the\n# per-invocation budget and deadline, per-call timeouts, delegation depth, one repair cycle and\n# no-progress stopping, and returns structured errors instead of raising. The model cannot change\n# any limit: limits are component inputs, never tool arguments. The lab enforces the same budgets\n# independently (8 actions per run, 24 per run tree, depth 2, 90 s / 180 s deadlines).\n# Version 1.0.0. Source of truth: tasksprint-lab/components/bounded_toolset.py\nfrom __future__ import annotations\n\nimport asyncio\nimport concurrent.futures\nimport hashlib\nimport json\nimport re\nimport time\nfrom typing import Any\nfrom urllib.parse import urlparse\n\nimport anyio\nimport httpx\nfrom langchain_core.tools import StructuredTool\nfrom pydantic import BaseModel, Field\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, DropdownInput, FloatInput, HandleInput, IntInput, MessageTextInput, Output, SecretStrInput\nfrom lfx.schema.json_schema import create_input_schema_from_json_schema\n\nADAPTER_VERSION = \"bounded_toolset/1.0.0\"\nWORKSPACE_RE = re.compile(r\"^[a-z0-9][a-z0-9-]{2,63}$\")\nRUN_RE = re.compile(r\"^run_[0-9a-f]{32}$\")\n# Fixed per-role allowlist = the lab's Phase 04 visibility matrix. A tool the lab lists but this\n# table does not name is not exposed; a tool named here but not listed by the lab is not exposed.\nALLOWLIST: dict[str, tuple[str, ...]] = {\n    \"product_owner\": (\"get_sprint_state\", \"search_approved_knowledge\"),\n    \"developer\": (\"get_sprint_state\", \"search_approved_knowledge\", \"list_skills\", \"load_skill\", \"read_candidate\",\n                  \"submit_candidate\"),\n    \"qa\": (\"get_sprint_state\", \"read_candidate\", \"run_candidate_tests\", \"read_test_report\", \"read_recent_events\"),\n    \"coordinator\": (\"get_sprint_state\", \"record_story\", \"transition_story\", \"read_preferences\", \"save_preference\",\n                    \"read_test_report\", \"read_recent_events\"),\n}\n# Delegation slots: fixed tool name, the only flow allowed in the slot, and its purpose.\nDELEGATIONS: tuple[tuple[str, str, str, str], ...] = (\n    (\"product_owner_flow\", \"ask_product_owner\", \"TS-01 Product Owner\",\n     \"Delegate a scope or acceptance-criteria question to the Product Owner specialist (TS-01). It retrieves \"\n     \"approved requirement evidence and returns a cited story proposal or answer. It cannot approve scope.\"),\n    (\"developer_flow\", \"ask_developer\", \"TS-02 Developer\",\n     \"Delegate implementation or ONE repair of the complete(tasks, task_id) candidate to the Developer specialist \"\n     \"(TS-02). For a repair, include the failing test report ID and the failed assertions (expected/actual). \"\n     \"Returns the new candidate ID and hash. Submission is not a test pass.\"),\n    (\"qa_flow\", \"ask_qa\", \"TS-03 QA\",\n     \"Delegate an independent protected-suite run for one exact candidate ID to the QA specialist (TS-03). \"\n     \"Returns the runner-written test report ID and the failed assertions, if any.\"),\n)\n# Lab errors after which the run can do nothing more in this invocation.\nTERMINAL_LAB_CODES = {\"BUDGET_EXHAUSTED\", \"RUN_EXPIRED\", \"RUN_NOT_ACTIVE\", \"RUN_STALE_GENERATION\", \"RUN_NOT_BOUND\",\n                      \"WORKSPACE_INACTIVE\", \"UNAUTHENTICATED\"}\nNO_PROGRESS_REPEATS = 3  # the same call with the same arguments a third time stops the invocation\nMAX_RESULT_CHARS = 8000\n\n\ndef _norm(text: str) -> str:\n    return re.sub(r\"[^a-z0-9]\", \"\", text.lower())\n\n\nclass DelegationArgs(BaseModel):\n    request: str = Field(..., min_length=1, max_length=4000,\n                         description=\"The bounded task for the specialist: what to do, with the exact IDs it needs.\")\n\n\nclass _Ledger:\n    \"\"\"Per-invocation harness state. Lives only for one build of this component (one flow run).\"\"\"\n\n    def __init__(self, run: dict, max_actions: int, invocation_timeout_s: float):\n        self.run = run\n        self.max_actions = max_actions\n        server_deadline = run.get(\"deadline_epoch\") or (time.time() + invocation_timeout_s)\n        self.deadline = min(time.time() + invocation_timeout_s, server_deadline)\n        self.actions = 0\n        self.delegations: dict[str, int] = {}\n        self.calls: dict[str, int] = {}\n        self.stopped: dict | None = None\n        self.trace: list[dict] = []\n\n    def remaining(self) -> float:\n        return self.deadline - time.time()\n\n    def view(self) -> dict:\n        return {\"scope\": \"this Agent invocation (trusted wrapper; the lab's own run budget is reported separately \"\n                         \"as 'budget')\",\n                \"run_id\": self.run[\"run_id\"], \"role\": self.run.get(\"role\"), \"depth\": self.run.get(\"depth\"),\n                \"invocation_actions_used\": self.actions, \"invocation_max_actions\": self.max_actions,\n                \"remaining_s\": max(0, round(self.remaining(), 1)), \"delegations\": dict(self.delegations),\n                \"invocation_stopped\": self.stopped}\n\n    def stop(self, code: str, message: str) -> None:\n        if self.stopped is None:\n            self.stopped = {\"code\": code, \"message\": message}\n\n\nclass TaskSprintBoundedToolset(Component):\n    display_name = \"TaskSprint Bounded Toolset\"\n    description = (\"Trusted harness: exposes only this role's allowlisted TaskSprint MCP tools (fresh MCP session per \"\n                   \"call, bound to the Run Context's server-issued run) and, for the coordinator, three fixed \"\n                   \"specialist delegations, with action budgets, deadlines, depth and repair limits.\")\n    icon = \"shield-check\"\n    name = \"TaskSprintBoundedToolset\"\n\n    inputs = [\n        DataInput(name=\"run_info\", display_name=\"Run\", required=True,\n                  info=\"Connect the 'Run' output of the TaskSprint Run Context in this flow.\"),\n        DropdownInput(name=\"expected_role\", display_name=\"Role\", options=list(ALLOWLIST), value=\"product_owner\",\n                      info=\"The role this flow's credential must authenticate as. Fixes the tool allowlist.\"),\n        SecretStrInput(name=\"role_token\", display_name=\"Role token\", value=\"\", load_from_db=True,\n                       info=\"Bind the same Credential global as the Run Context (TS_PO_TOKEN, TS_DEV_TOKEN, ...).\"),\n        MessageTextInput(name=\"api_base\", display_name=\"TaskSprint API base\", value=\"TASKSPRINT_API_BASE\",\n                         load_from_db=True, advanced=True, info=\"Bind the Generic global TASKSPRINT_API_BASE.\"),\n        MessageTextInput(name=\"workspace\", display_name=\"Workspace\", value=\"demo-001\", advanced=True),\n        IntInput(name=\"max_actions\", display_name=\"Max tool actions per invocation\", value=8, advanced=True,\n                 info=\"Tool calls plus delegations in one Agent invocation (1-8; the lab caps each run at 8).\"),\n        FloatInput(name=\"invocation_timeout_s\", display_name=\"Invocation deadline (s)\", value=90.0, advanced=True,\n                   info=\"90 for a specialist, 180 for the coordinator. Never later than the lab run's deadline.\"),\n        FloatInput(name=\"tool_timeout_s\", display_name=\"Per-call timeout (s)\", value=30.0, advanced=True),\n        IntInput(name=\"max_depth\", display_name=\"Max delegation depth\", value=2, advanced=True),\n        IntInput(name=\"max_repairs\", display_name=\"Repair cycles per turn\", value=1, advanced=True,\n                 info=\"Developer and QA may each be asked 1 + this many times in one coordinator turn.\"),\n        FloatInput(name=\"delegation_timeout_s\", display_name=\"Delegation timeout (s)\", value=90.0, advanced=True),\n        HandleInput(name=\"product_owner_flow\", display_name=\"Run Flow: TS-01 Product Owner\", input_types=[\"Tool\"],\n                    required=False, info=\"Coordinator only: the Toolset of a Run Flow set to TS-01 Product Owner.\"),\n        HandleInput(name=\"developer_flow\", display_name=\"Run Flow: TS-02 Developer\", input_types=[\"Tool\"],\n                    required=False, info=\"Coordinator only: the Toolset of a Run Flow set to TS-02 Developer.\"),\n        HandleInput(name=\"qa_flow\", display_name=\"Run Flow: TS-03 QA\", input_types=[\"Tool\"], required=False,\n                    info=\"Coordinator only: the Toolset of a Run Flow set to TS-03 QA.\"),\n    ]\n    outputs = [Output(display_name=\"Toolset\", name=\"component_as_tool\", method=\"to_toolkit\", types=[\"Tool\"],\n                      cache=False)]\n\n    # ------------------------------------------------------------------ configuration checks\n    def _config(self) -> tuple[str, str, str, dict]:\n        base = (self.api_base or \"\").strip().rstrip(\"/\")\n        u = urlparse(base)\n        if u.scheme != \"https\" or not u.hostname or u.path or u.query or u.fragment or u.username:\n            raise ValueError(\"TASKSPRINT_API_BASE must be an https origin without a path\")\n        workspace = (self.workspace or \"\").strip()\n        if not WORKSPACE_RE.match(workspace):\n            raise ValueError(\"workspace id is invalid\")\n        token = self.role_token or \"\"\n        if len(token) < 32:\n            raise ValueError(\"role token is not bound (Credential global variable missing)\")\n        raw = self.run_info\n        data = getattr(raw, \"data\", raw) if raw is not None else None\n        if not isinstance(data, dict) or not RUN_RE.match(str(data.get(\"run_id\", \"\"))):\n            raise ValueError(\"connect the Run output of the TaskSprint Run Context (no server-issued run)\")\n        if data.get(\"role\") != self.expected_role:\n            raise ValueError(f\"run role {data.get('role')!r} does not match this toolset's role {self.expected_role!r}\")\n        return base, workspace, token, dict(data)\n\n    def _headers(self, token: str, workspace: str, run_id: str) -> dict[str, str]:\n        return {\"Authorization\": f\"Bearer {token}\", \"X-TaskSprint-Workspace\": workspace, \"X-TaskSprint-Run\": run_id,\n                \"User-Agent\": ADAPTER_VERSION}\n\n    # ------------------------------------------------------------------ MCP over Streamable HTTP (official SDK)\n    async def _session_do(self, url: str, headers: dict, timeout: float, fn):\n        from mcp import ClientSession  # Langflow 1.12 ships mcp>=1.17,<2\n\n        try:\n            from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client\n        except ImportError:  # older 1.x SDK\n            create_mcp_http_client = None\n            from mcp.client.streamable_http import streamablehttp_client\n        with anyio.fail_after(timeout):\n            if create_mcp_http_client is not None:\n                async with create_mcp_http_client(headers=headers, timeout=httpx.Timeout(timeout)) as http:\n                    async with streamable_http_client(url, http_client=http) as (read, write, _):\n                        async with ClientSession(read, write) as session:\n                            await session.initialize()\n                            return await fn(session)\n            async with streamablehttp_client(url, headers=headers, timeout=timeout) as (read, write, _):\n                async with ClientSession(read, write) as session:\n                    await session.initialize()\n                    return await fn(session)\n\n    async def _list_tools(self, base: str, workspace: str, token: str, run_id: str) -> list:\n        async def do(session):\n            return (await session.list_tools()).tools\n        return await self._session_do(base + \"/mcp\", self._headers(token, workspace, run_id),\n                                      float(self.tool_timeout_s or 30), do)\n\n    # ------------------------------------------------------------------ results\n    @staticmethod\n    def _out(payload: dict, ledger: _Ledger) -> str:\n        # The harness view is a snapshot when this result is returned; parallel calls can finish in any order.\n        payload = {**payload, \"harness\": ledger.view()}\n        text = json.dumps(payload, sort_keys=True, default=str)\n        return text if len(text) <= MAX_RESULT_CHARS else text[:MAX_RESULT_CHARS] + \"...[truncated]\"\n\n    def _refuse(self, ledger: _Ledger, tool: str, code: str, message: str, terminal: bool = True) -> str:\n        if terminal:\n            ledger.stop(code, message)\n        ledger.trace.append({\"tool\": tool, \"outcome\": \"refused\", \"code\": code})\n        return self._out({\"error\": {\"code\": code, \"message\": message, \"source\": \"harness\"}}, ledger)\n\n    def _gate(self, ledger: _Ledger, tool: str, key: str) -> str | None:\n        \"\"\"Checks before any action; returns a structured refusal or None.\"\"\"\n        if ledger.stopped is not None:\n            return self._refuse(ledger, tool, \"HARNESS_STOPPED\",\n                                f\"this invocation already stopped ({ledger.stopped['code']}); escalate to the human\",\n                                terminal=False)\n        if ledger.remaining() <= 0:\n            return self._refuse(ledger, tool, \"INVOCATION_DEADLINE_PASSED\",\n                                \"the invocation deadline has passed; stop and escalate\")\n        if ledger.actions >= ledger.max_actions:\n            return self._refuse(ledger, tool, \"BUDGET_EXHAUSTED\",\n                                f\"the action budget of {ledger.max_actions} for this invocation is used; stop and \"\n                                \"escalate\")\n        ledger.calls[key] = ledger.calls.get(key, 0) + 1\n        if ledger.calls[key] >= NO_PROGRESS_REPEATS:\n            return self._refuse(ledger, tool, \"NO_PROGRESS\",\n                                f\"the same call was requested {NO_PROGRESS_REPEATS} times without progress; stop\")\n        return None\n\n    # ------------------------------------------------------------------ one bounded MCP tool call\n    async def _call_mcp(self, ledger: _Ledger, conf: tuple, name: str, read_only: bool, args: dict) -> str:\n        base, workspace, token = conf\n        key = name + \":\" + hashlib.sha256(json.dumps(args, sort_keys=True, default=str).encode()).hexdigest()[:16]\n        refusal = self._gate(ledger, name, key)\n        if refusal:\n            return refusal\n        attempts = 2 if read_only else 1  # one retry for a transient read; no blind write retries\n        last_err = None\n        for attempt in range(attempts):\n            if ledger.actions >= ledger.max_actions or ledger.remaining() <= 0:\n                break\n            ledger.actions += 1\n            timeout = max(0.5, min(float(self.tool_timeout_s or 30), ledger.remaining()))\n\n            async def do(session):\n                return await session.call_tool(name, args)\n            try:\n                res = await self._session_do(base + \"/mcp\", self._headers(token, workspace, ledger.run[\"run_id\"]),\n                                             timeout, do)\n            except TimeoutError:\n                ledger.stop(\"TOOL_TIMEOUT\", f\"{name} did not answer within {timeout:.0f} s\")\n                ledger.trace.append({\"tool\": name, \"outcome\": \"timeout\"})\n                return self._out({\"error\": {\"code\": \"TOOL_TIMEOUT\", \"source\": \"harness\", \"message\":\n                                            f\"{name} did not answer within {timeout:.0f} s. The outcome is unknown; \"\n                                            \"this invocation is stopped. Read state before any new attempt.\"}}, ledger)\n            except Exception as exc:  # noqa: BLE001 - transport failure becomes a structured result\n                last_err = f\"{type(exc).__name__}\"\n                ledger.trace.append({\"tool\": name, \"outcome\": \"transport_error\", \"attempt\": attempt + 1})\n                continue\n            body = res.structuredContent\n            if not isinstance(body, dict):\n                texts = [c.text for c in (res.content or []) if getattr(c, \"type\", \"\") == \"text\"]\n                try:\n                    body = json.loads(texts[0]) if texts else {}\n                except ValueError:\n                    body = {\"text\": texts[0][:2000]}\n            if res.isError:\n                code = (body.get(\"error\") or {}).get(\"code\", \"TOOL_ERROR\")\n                if code in TERMINAL_LAB_CODES:\n                    ledger.stop(code, (body.get(\"error\") or {}).get(\"message\", \"\"))\n                ledger.trace.append({\"tool\": name, \"outcome\": \"error\", \"code\": code})\n                return self._out(body, ledger)\n            ledger.trace.append({\"tool\": name, \"outcome\": \"ok\"})\n            return self._out(body, ledger)\n        if last_err is None:\n            return self._refuse(ledger, name, \"BUDGET_EXHAUSTED\", \"no action budget or time left for this call\")\n        return self._out({\"error\": {\"code\": \"LAB_UNREACHABLE\", \"source\": \"harness\",\n                                    \"message\": f\"{name}: the TaskSprint lab could not be reached ({last_err}). \"\n                                               \"Nothing is known to have changed; escalate.\"}}, ledger)\n\n    # ------------------------------------------------------------------ one bounded delegation\n    async def _delegate(self, ledger: _Ledger, conf: tuple, slot: str, tool_name: str, inner, request: str) -> str:\n        base, workspace, token = conf\n        key = tool_name + \":\" + hashlib.sha256(request.encode()).hexdigest()[:16]\n        refusal = self._gate(ledger, tool_name, key)\n        if refusal:\n            return refusal\n        depth = int(ledger.run.get(\"depth\") or 0)\n        if depth + 1 > max(0, min(2, int(self.max_depth))):\n            return self._refuse(ledger, tool_name, \"DELEGATION_DEPTH_EXCEEDED\",\n                                f\"delegation depth would exceed {self.max_depth}\", terminal=False)\n        limit = 1 + max(0, min(1, int(self.max_repairs)))\n        used = ledger.delegations.get(tool_name, 0)\n        if tool_name in (\"ask_developer\", \"ask_qa\") and used >= limit:\n            return self._refuse(ledger, tool_name, \"REPAIR_BUDGET_EXHAUSTED\",\n                                f\"{tool_name} was already used {used} times in this turn (one implementation plus \"\n                                f\"{limit - 1} repair cycle); escalate to the human with the evidence IDs\")\n        if tool_name == \"ask_product_owner\" and used >= 2:\n            return self._refuse(ledger, tool_name, \"DELEGATION_LIMIT\", \"ask_product_owner already used twice this \"\n                                \"turn; escalate the open scope question to the human\", terminal=False)\n        # Charge the delegation as one action of the parent run (and its tree) at the lab before starting it.\n        ledger.actions += 1\n        try:\n            async with httpx.AsyncClient(timeout=min(15.0, max(0.5, ledger.remaining())),\n                                         follow_redirects=False) as client:\n                r = await client.get(base + \"/v1/state\", headers=self._headers(token, workspace, ledger.run[\"run_id\"]))\n        except httpx.HTTPError as exc:\n            return self._out({\"error\": {\"code\": \"LAB_UNREACHABLE\", \"source\": \"harness\",\n                                        \"message\": f\"could not charge the delegation ({type(exc).__name__}); \"\n                                                   \"not delegated\"}}, ledger)\n        if r.status_code != 200:\n            try:\n                err = r.json().get(\"error\") or {}\n            except ValueError:\n                err = {}\n            code = err.get(\"code\", f\"HTTP_{r.status_code}\")\n            if code in TERMINAL_LAB_CODES:\n                ledger.stop(code, err.get(\"message\", \"\"))\n            ledger.trace.append({\"tool\": tool_name, \"outcome\": \"refused_by_lab\", \"code\": code})\n            return self._out({\"error\": {\"code\": code, \"message\": err.get(\"message\", \"\"), \"source\": \"lab\",\n                                        \"request_id\": err.get(\"request_id\")}}, ledger)\n        ledger.delegations[tool_name] = used + 1\n        timeout = max(1.0, min(float(self.delegation_timeout_s or 90), ledger.remaining()))\n        field = self._inner_field(inner)\n        started = time.time()\n        try:\n            with anyio.fail_after(timeout):\n                out = await inner.ainvoke({\"flow_tweak_data\": {field: request}})\n        except TimeoutError:\n            ledger.stop(\"DELEGATION_TIMEOUT\", f\"{tool_name} did not finish within {timeout:.0f} s\")\n            ledger.trace.append({\"tool\": tool_name, \"outcome\": \"timeout\"})\n            return self._out({\"error\": {\"code\": \"DELEGATION_TIMEOUT\", \"source\": \"harness\", \"message\":\n                                        f\"{tool_name} was cancelled after {timeout:.0f} s. Its lab run expires at its \"\n                                        \"own deadline; read state before deciding. This turn is stopped.\"}}, ledger)\n        except Exception as exc:  # noqa: BLE001\n            ledger.trace.append({\"tool\": tool_name, \"outcome\": \"error\"})\n            return self._out({\"error\": {\"code\": \"DELEGATION_FAILED\", \"source\": \"harness\",\n                                        \"message\": f\"{tool_name} failed ({type(exc).__name__}: {str(exc)[:300]})\"}},\n                             ledger)\n        text = out if isinstance(out, str) else json.dumps(out, default=str)\n        ledger.trace.append({\"tool\": tool_name, \"outcome\": \"ok\", \"elapsed_s\": round(time.time() - started, 1)})\n        return self._out({\"delegation\": {\"tool\": tool_name, \"flow\": dict((d[1], d[2]) for d in DELEGATIONS)[tool_name],\n                                         \"parent_run_id\": ledger.run[\"run_id\"], \"elapsed_s\": round(time.time() - started, 1)},\n                          \"specialist_response\": text[:6000]}, ledger)\n\n    @staticmethod\n    def _inner_field(inner) -> str:\n        schema = inner.args_schema\n        outer = getattr(schema, \"model_fields\", {}).get(\"flow_tweak_data\")\n        fields = getattr(outer.annotation, \"model_fields\", {}) if outer is not None else {}\n        names = [n for n in fields if n.endswith(\"~input_value\")]\n        if len(names) != 1:\n            raise ValueError(\"the Run Flow tool does not expose exactly one Chat Input text field\")\n        return names[0]\n\n    # ------------------------------------------------------------------ tool construction\n    @staticmethod\n    def _sync(coro_fn):\n        def run_sync(**kwargs):\n            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:\n                return ex.submit(lambda: asyncio.run(coro_fn(**kwargs))).result()\n        return run_sync\n\n    def _delegation_tools(self, ledger: _Ledger, conf: tuple) -> list:\n        tools = []\n        wired = {slot: getattr(self, slot, None) for slot, *_ in DELEGATIONS}\n        if self.expected_role != \"coordinator\":\n            if any(wired.values()):\n                raise ValueError(\"only the coordinator toolset may carry delegation tools\")\n            return tools\n        for slot, tool_name, flow_name, purpose in DELEGATIONS:\n            value = wired[slot]\n            inner_list = value if isinstance(value, list) else ([value] if value else [])\n            if len(inner_list) != 1:\n                raise ValueError(f\"connect exactly one Run Flow ({flow_name}) to '{slot}'\")\n            inner = inner_list[0]\n            expected = _norm(flow_name + \"_tool\")\n            if _norm(getattr(inner, \"name\", \"\")) != expected or flow_name not in (getattr(inner, \"description\", \"\") or \"\"):\n                raise ValueError(f\"'{slot}' accepts only the Run Flow tool for {flow_name}\")\n\n            run = self._delegation_fn(ledger, conf, slot, tool_name, inner)\n            tools.append(StructuredTool(name=tool_name, description=purpose, args_schema=DelegationArgs,\n                                        coroutine=run, func=self._sync(run), tags=[tool_name],\n                                        metadata={\"source\": ADAPTER_VERSION, \"flow\": flow_name}))\n        return tools\n\n    def _delegation_fn(self, ledger: _Ledger, conf: tuple, slot: str, tool_name: str, inner):\n        async def run(request: str) -> str:\n            return await self._delegate(ledger, conf, slot, tool_name, inner, request)\n        return run\n\n    def _mcp_fn(self, ledger: _Ledger, conf: tuple, name: str, read_only: bool):\n        async def run(**kwargs) -> str:\n            args = {k: (v.model_dump(exclude_none=True) if isinstance(v, BaseModel) else v)\n                    for k, v in kwargs.items() if v is not None}\n            return await self._call_mcp(ledger, conf, name, read_only, args)\n        return run\n\n    async def _get_tools(self) -> list:\n        base, workspace, token, run = self._config()\n        max_actions = max(1, min(8, int(self.max_actions)))\n        limit_s = max(5.0, min(180.0, float(self.invocation_timeout_s or 90)))\n        deadline_at = run.get(\"deadline_at\")\n        if isinstance(deadline_at, str):\n            from datetime import datetime\n            try:\n                run[\"deadline_epoch\"] = datetime.fromisoformat(deadline_at.replace(\"Z\", \"+00:00\")).timestamp()\n            except ValueError:\n                pass\n        ledger = _Ledger(run, max_actions, limit_s)\n        self._ts_ledger = ledger\n        conf = (base, workspace, token)\n        listed = await self._list_tools(base, workspace, token, run[\"run_id\"])\n        allowed = ALLOWLIST[self.expected_role]\n        tools = []\n        for t in listed:\n            if t.name not in allowed:\n                continue\n            schema = create_input_schema_from_json_schema(t.inputSchema or {\"type\": \"object\", \"properties\": {}})\n            read_only = bool(getattr(t.annotations, \"readOnlyHint\", False)) if t.annotations else False\n\n            run_tool = self._mcp_fn(ledger, conf, t.name, read_only)\n            tools.append(StructuredTool(name=t.name, description=(t.description or \"\")[:1000], args_schema=schema,\n                                        coroutine=run_tool, func=self._sync(run_tool), tags=[t.name],\n                                        metadata={\"source\": ADAPTER_VERSION, \"read_only\": read_only}))\n        tools += self._delegation_tools(ledger, conf)\n        self.status = {\"adapter\": ADAPTER_VERSION, \"role\": self.expected_role, \"run_id\": run[\"run_id\"],\n                       \"tools\": [t.name for t in tools], \"max_actions\": max_actions,\n                       \"deadline_s\": round(ledger.remaining(), 1)}\n        return tools\n",
+                "fileTypes": [],
+                "file_path": "",
+                "password": false,
+                "name": "code",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "info": "",
+                "load_from_db": false,
+                "title_case": false
+              },
+              "delegation_timeout_s": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "delegation_timeout_s",
+                "value": 90.0,
+                "display_name": "Delegation timeout (s)",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": true,
+                "type": "float",
+                "_input_type": "FloatInput"
+              },
+              "expected_role": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "options": [
+                  "product_owner",
+                  "developer",
+                  "qa",
+                  "coordinator"
+                ],
+                "options_metadata": [],
+                "combobox": false,
+                "dialog_inputs": {},
+                "toggle": false,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "expected_role",
+                "value": "product_owner",
+                "display_name": "Role",
+                "advanced": false,
+                "api_editable": false,
+                "dynamic": false,
+                "info": "The role this flow's credential must authenticate as. Fixes the tool allowlist.",
+                "title_case": false,
+                "track_in_telemetry": true,
+                "external_options": {},
+                "type": "str",
+                "_input_type": "DropdownInput"
+              },
+              "invocation_timeout_s": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "invocation_timeout_s",
+                "value": 90.0,
+                "display_name": "Invocation deadline (s)",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": false,
+                "info": "90 for a specialist, 180 for the coordinator. Never later than the lab run's deadline.",
+                "title_case": false,
+                "track_in_telemetry": true,
+                "type": "float",
+                "_input_type": "FloatInput"
+              },
+              "max_actions": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "max_actions",
+                "value": 8,
+                "display_name": "Max tool actions per invocation",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": false,
+                "info": "Tool calls plus delegations in one Agent invocation (1-8; the lab caps each run at 8).",
+                "title_case": false,
+                "track_in_telemetry": true,
+                "type": "int",
+                "_input_type": "IntInput"
+              },
+              "max_depth": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "max_depth",
+                "value": 2,
+                "display_name": "Max delegation depth",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": true,
+                "type": "int",
+                "_input_type": "IntInput"
+              },
+              "max_repairs": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "max_repairs",
+                "value": 1,
+                "display_name": "Repair cycles per turn",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": false,
+                "info": "Developer and QA may each be asked 1 + this many times in one coordinator turn.",
+                "title_case": false,
+                "track_in_telemetry": true,
+                "type": "int",
+                "_input_type": "IntInput"
+              },
+              "role_token": {
+                "load_from_db": true,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "role_token",
+                "value": "TS_PO_TOKEN",
+                "display_name": "Role token",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [],
+                "dynamic": false,
+                "info": "Bind the same Credential global as the Run Context (TS_PO_TOKEN, TS_DEV_TOKEN, ...).",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "password": true,
+                "type": "str",
+                "_input_type": "SecretStrInput"
+              },
+              "tool_timeout_s": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "tool_timeout_s",
+                "value": 30.0,
+                "display_name": "Per-call timeout (s)",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": true,
+                "type": "float",
+                "_input_type": "FloatInput"
+              },
+              "workspace": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "workspace",
+                "value": "demo-001",
+                "display_name": "Workspace",
+                "advanced": true,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              }
             },
+            "description": "Trusted harness: exposes only this role's allowlisted TaskSprint MCP tools (fresh MCP session per call, bound to the Run Context's server-issued run) and, for the coordinator, three fixed specialist delegations, with action budgets, deadlines, depth and repair limits.",
+            "icon": "shield-check",
+            "base_classes": [
+              "Tool"
+            ],
+            "display_name": "TaskSprint Bounded Toolset",
+            "documentation": "",
             "minimized": false,
+            "custom_fields": {},
             "output_types": [],
+            "pinned": false,
+            "conditional_paths": [],
+            "frozen": false,
             "outputs": [
               {
                 "types": [
@@ -1718,283 +2047,64 @@
                 "tool_mode": true
               }
             ],
-            "pinned": false,
-            "template": {
-              "_type": "Component",
-              "code": {
-                "advanced": true,
-                "api_editable": false,
-                "dynamic": true,
-                "fileTypes": [],
-                "file_path": "",
-                "info": "",
-                "list": false,
-                "load_from_db": false,
-                "multiline": true,
-                "name": "code",
-                "password": false,
-                "placeholder": "",
-                "required": true,
-                "show": true,
-                "title_case": false,
-                "type": "code",
-                "value": "from __future__ import annotations\n\nimport asyncio\nimport hashlib\nimport json\nimport time\nimport uuid\nfrom types import UnionType\nfrom typing import Any, cast, get_args, get_origin\n\nfrom langchain_core.tools import StructuredTool  # noqa: TC002\nfrom pydantic import BaseModel\n\nfrom lfx.base.agents.utils import maybe_unflatten_dict, safe_cache_get, safe_cache_set\nfrom lfx.base.mcp.util import (\n    MCPStdioClient,\n    MCPStreamableHttpClient,\n    config_uses_global_variables,\n    update_tools,\n)\nfrom lfx.base.tools.constants import TOOL_OUTPUT_DISPLAY_NAME, TOOL_OUTPUT_NAME\nfrom lfx.custom.custom_component.component_with_cache import ComponentWithCache\nfrom lfx.inputs.inputs import InputTypes  # noqa: TC001\nfrom lfx.io import BoolInput, DictInput, DropdownInput, FloatInput, McpInput, MessageTextInput, Output\nfrom lfx.io.schema import schema_to_langflow_inputs\nfrom lfx.log.logger import logger\nfrom lfx.schema.dataframe import DataFrame\nfrom lfx.schema.message import Message\nfrom lfx.services.deps import get_storage_service, session_scope\n\n\ndef resolve_mcp_config(\n    server_name: str,  # noqa: ARG001\n    server_config_from_value: dict | None,\n    server_config_from_db: dict | None,\n) -> dict | None:\n    \"\"\"Resolve MCP server config with proper precedence.\n\n    Resolves the configuration for an MCP server with the following precedence:\n    1. Database config (takes priority) - ensures edits are reflected\n    2. Config from value/tweaks (fallback) - allows REST API to provide config for new servers\n\n    Args:\n        server_name: Name of the MCP server\n        server_config_from_value: Config provided via value/tweaks (optional)\n        server_config_from_db: Config from database (optional)\n\n    Returns:\n        Final config to use (DB takes priority, falls back to value)\n        Returns None if no config found in either location\n    \"\"\"\n    if server_config_from_db:\n        return server_config_from_db\n    return server_config_from_value\n\n\n# TODO(legacy-cleanup): This file is ~800 lines, over the 500-line guideline. Split\n# helper functions (resolve_mcp_config, connection resolution) from the MCPToolsComponent\n# orchestration logic in a follow-up PR.\nclass MCPToolsComponent(ComponentWithCache):\n    \"\"\"MCP Tools component.\n\n    Behaviour notes:\n    - Stale agent tools vs server were caused by Langflow caching the Toolset output\n      (``Output.cache=True`` plus the persisted ``output.value`` in saved flow JSON), not\n      only by the user-facing \"Use Cached Server\" (``use_cache``) toggle. ``_build_tool_output``\n      declares the Toolset output with ``cache=False`` and ``map_outputs`` overrides the\n      persisted value for existing flows so every run resolves a fresh tool list.\n    - ``update_tool_list`` is serialized with an ``asyncio.Lock`` so concurrent calls do not\n      share the same Streamable HTTP client session; overlapping POST/DELETE cycles otherwise\n      surface as HTTP 404 and the MCP SDK reports ``Session terminated``.\n    - All diagnostic logs are at DEBUG level to avoid swamping logs on hot paths (an agent\n      may call ``_get_tools`` per step). Header values are never logged; only header *keys*.\n    \"\"\"\n\n    # Short-lived in-memory cache window (seconds) for ``_get_tools``. When the\n    # same header-hash key is requested again within this window the cached tool\n    # list is reused so parallel agent runs that share identical auth don't\n    # each pay for a fresh MCP round-trip. Set to ``0`` to disable. This is\n    # distinct from the \"Use Cached Server\" (``use_cache``) toggle which only\n    # controls the shared cross-request server cache.\n    TOOL_TTL_SECS: int = 30\n    # Upper bound on the per-component-lineage TTL cache. Oldest entries are evicted\n    # when the cap is reached. Keeps memory bounded for flows where the same\n    # component handles many rotating auth contexts (e.g. per-tenant tokens).\n    TOOL_TTL_MAX_ENTRIES: int = 32\n    # Upper bound on the shared cross-request ``servers`` cache. Each\n    # (server_name, header-hash) pair is a distinct entry; without a bound a\n    # tenant that rotates session tokens would grow this map without limit.\n    SHARED_SERVERS_CACHE_MAX_ENTRIES: int = 64\n\n    schema_inputs: list = []\n    tools: list[StructuredTool] = []\n    _not_load_actions: bool = False\n    _tool_cache: dict = {}\n    _last_selected_server: str | None = None  # Cache for the last selected server\n\n    def __init__(self, **data) -> None:\n        super().__init__(**data)\n        # Initialize cache keys to avoid CacheMiss when accessing them\n        self._ensure_cache_structure()\n\n        # Initialize clients with access to the component cache.\n        # Per-component timeout is normalized and applied immediately before MCP calls.\n        self.stdio_client: MCPStdioClient = MCPStdioClient(component_cache=self._shared_component_cache)\n        self.streamable_http_client: MCPStreamableHttpClient = MCPStreamableHttpClient(\n            component_cache=self._shared_component_cache\n        )\n        # One MCP stdio/streamable client pair per component; concurrent update_tool_list calls\n        # otherwise race (session DELETE vs POST) and the MCP SDK surfaces HTTP 404 as \"Session terminated\".\n        self._update_tool_list_lock = asyncio.Lock()\n        # Per-component-lineage TTL cache for ``_get_tools``:\n        # {cache_key: (monotonic_ts, tools)}. Freshly instantiated components get their own\n        # dict; ``__deepcopy__`` shares it only with that component's invocation copies.\n        # A class-level dict would instead expose entries to every MCPToolsComponent in the\n        # process, leaking tool lists across tenants that happen to hash to the same key.\n        self._ttl_tool_cache: dict[str, tuple[float, list]] = {}\n\n    def __deepcopy__(self, memo: dict) -> MCPToolsComponent:\n        \"\"\"Keep the per-component tool cache available to isolated invocation copies.\"\"\"\n        component_copy = cast(\"MCPToolsComponent\", super().__deepcopy__(memo))\n        # Component tools are deep-copied for every invocation to isolate mutable inputs.\n        # Those copies belong to the same component execution lineage, so sharing this\n        # bounded, auth-scoped cache preserves its TTL without exposing it to independently\n        # instantiated components.\n        component_copy._ttl_tool_cache = self._ttl_tool_cache  # noqa: SLF001\n        return component_copy\n\n    def _ensure_cache_structure(self):\n        \"\"\"Ensure the cache has the required structure.\"\"\"\n        # Check if servers key exists and is not CacheMiss\n        servers_value = safe_cache_get(self._shared_component_cache, \"servers\")\n        if servers_value is None:\n            safe_cache_set(self._shared_component_cache, \"servers\", {})\n\n        # Check if last_selected_server key exists and is not CacheMiss\n        last_server_value = safe_cache_get(self._shared_component_cache, \"last_selected_server\")\n        if last_server_value is None:\n            safe_cache_set(self._shared_component_cache, \"last_selected_server\", \"\")\n\n    def _normalized_headers_for_cache(self) -> dict[str, str]:\n        \"\"\"Component headers as a dict for stable cache keying (auth / tweaks).\"\"\"\n        component_headers = getattr(self, \"headers\", None) or []\n        if isinstance(component_headers, list):\n            return {\n                str(item[\"key\"]): str(item[\"value\"])\n                for item in component_headers\n                if isinstance(item, dict) and \"key\" in item and \"value\" in item\n            }\n        if isinstance(component_headers, dict):\n            return {str(k): str(v) for k, v in component_headers.items()}\n        return {}\n\n    def _normalize_tool_execution_timeout(self) -> float | None:\n        \"\"\"Normalize the timeout input and reject negative values with a field-specific error.\"\"\"\n        timeout_value = getattr(self, \"tool_execution_timeout\", 0.0)\n\n        if timeout_value in (None, \"\"):\n            return None\n\n        try:\n            val = float(timeout_value)\n        except (ValueError, TypeError):\n            return None\n\n        if val < 0:\n            msg = \"Tool Execution Timeout must be greater than or equal to 0.\"\n            raise ValueError(msg)\n\n        return val if val else None\n\n    def _mcp_servers_cache_key(self, server_name: str) -> str:\n        \"\"\"Cache key for shared servers map.\n\n        Includes the authenticated user, headers, and timeout so tenant/auth/tweak/timeout\n        changes get distinct entries.\n        \"\"\"\n        if not server_name:\n            return \"\"\n\n        raw_timeout = getattr(self, \"tool_execution_timeout\", 0.0) or 0.0\n        normalized_timeout = max(0.0, float(raw_timeout))\n\n        hdrs = self._normalized_headers_for_cache()\n\n        # Build cache key components\n        cache_data = {\n            \"headers\": hdrs,\n            \"timeout\": normalized_timeout,\n        }\n\n        user_id = self._mcp_cache_user_id()\n        if user_id:\n            cache_data[\"user_id\"] = user_id\n\n        # Preserve the compact per-instance TTL key when there is no authenticated user.\n        # Shared caching is disabled for that case in ``update_tool_list`` below.\n        if not hdrs and normalized_timeout == 0.0 and not user_id:\n            return server_name\n\n        payload = json.dumps(cache_data, sort_keys=True)\n        digest = hashlib.sha256(payload.encode()).hexdigest()[:16]\n        return f\"{server_name}:{digest}\"\n\n    def _mcp_cache_user_id(self) -> str | None:\n        \"\"\"Return the authenticated user id without requiring a fully attached graph.\n\n        Components are also instantiated without a vertex while the UI builds component\n        metadata. Accessing ``self.user_id`` in that state raises, so inspect the backing\n        fields directly and fail closed by returning ``None`` when no authenticated scope\n        is available.\n        \"\"\"\n        user_id = getattr(self, \"_user_id\", None)\n        if not user_id:\n            graph = getattr(getattr(self, \"_vertex\", None), \"graph\", None)\n            user_id = getattr(graph, \"user_id\", None)\n        return str(user_id) if user_id else None\n\n    def _build_tool_output(self) -> Output:\n        # Do not cache Toolset output. This is separate from the MCP \"Use Cached Server\" (use_cache)\n        # toggle: Langflow's Output.cache defaults to True and was memoizing the first to_toolkit()\n        # result, so per-request tweaks/headers never refreshed bound tools even when use_cache=False.\n        return Output(\n            name=TOOL_OUTPUT_NAME,\n            display_name=TOOL_OUTPUT_DISPLAY_NAME,\n            method=\"to_toolkit\",\n            types=[\"Tool\"],\n            cache=False,\n        )\n\n    def map_outputs(self) -> None:\n        \"\"\"Override the persisted ``component_as_tool`` cache flag from saved flow JSON.\n\n        ``_build_tool_output`` already returns the output with ``cache=False``, but the\n        flow JSON for existing flows often stores ``cache: true`` for ``component_as_tool``\n        and that persisted value wins over the declaration. Forcing ``cache=False`` here\n        guarantees saved flows also bypass Output memoization and get a fresh tool list\n        on every run.\n        \"\"\"\n        super().map_outputs()\n        if TOOL_OUTPUT_NAME in self._outputs_map:\n            self._outputs_map[TOOL_OUTPUT_NAME].cache = False\n\n    default_keys: list[str] = [\n        \"code\",\n        \"_type\",\n        \"tool_mode\",\n        \"tool_placeholder\",\n        \"mcp_server\",\n        \"tool\",\n        \"use_cache\",\n        \"verify_ssl\",\n        \"headers\",\n        \"tool_execution_timeout\",\n    ]\n\n    display_name = \"MCP Tools\"\n    description = \"Connect to an MCP server to use its tools.\"\n    documentation: str = \"https://docs.langflow.org/mcp-tools\"\n    icon = \"Mcp\"\n    name = \"MCPTools\"\n\n    inputs = [\n        McpInput(\n            name=\"mcp_server\",\n            display_name=\"MCP Server\",\n            info=\"Select the MCP Server that will be used by this component\",\n            real_time_refresh=True,\n        ),\n        BoolInput(\n            name=\"use_cache\",\n            display_name=\"Use Cached Server\",\n            info=(\n                \"Enable caching of MCP Server and tools to improve performance. \"\n                \"Disable to always fetch fresh tools and server updates.\"\n            ),\n            value=False,\n            advanced=True,\n        ),\n        BoolInput(\n            name=\"verify_ssl\",\n            display_name=\"Verify SSL Certificate\",\n            info=(\n                \"Enable SSL certificate verification for HTTPS connections. \"\n                \"Disable only for development/testing with self-signed certificates.\"\n            ),\n            value=True,\n            advanced=True,\n        ),\n        DictInput(\n            name=\"headers\",\n            display_name=\"Headers\",\n            info=(\n                \"HTTP headers to include with MCP server requests. \"\n                \"Useful for authentication (e.g., Authorization header). \"\n                \"These headers override any headers configured in the MCP server settings.\"\n            ),\n            advanced=True,\n            is_list=True,\n        ),\n        FloatInput(\n            name=\"tool_execution_timeout\",\n            display_name=\"Tool Execution Timeout (seconds)\",\n            info=(\n                \"Maximum time to wait for tool execution before timing out. \"\n                \"Supports decimal values for sub-second timeouts (e.g., 0.01 for 10ms). \"\n                \"Set to 0 to use the system-configured MCP timeout.\"\n            ),\n            value=0.0,\n            range_spec={\"min\": 0.0, \"max\": 3600.0, \"step\": 0.01},\n            real_time_refresh=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"tool\",\n            display_name=\"Tool\",\n            options=[],\n            value=\"\",\n            info=\"Select the tool to execute\",\n            show=False,\n            required=True,\n            real_time_refresh=True,\n            refresh_button=True,\n        ),\n        MessageTextInput(\n            name=\"tool_placeholder\",\n            display_name=\"Tool Placeholder\",\n            info=\"Placeholder for the tool\",\n            value=\"\",\n            show=False,\n            # Tool Mode is a capability of the component, not of the selected\n            # server. Advertising it up front keeps the toolbar from waiting\n            # for the MCP server's tool-discovery request to finish.\n            tool_mode=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Response\", name=\"response\", method=\"build_output\"),\n    ]\n\n    async def _validate_schema_inputs(self, tool_obj) -> list[InputTypes]:\n        \"\"\"Validate and process schema inputs for a tool.\"\"\"\n        try:\n            if not tool_obj or not hasattr(tool_obj, \"args_schema\"):\n                msg = \"Invalid tool object or missing input schema\"\n                raise ValueError(msg)\n\n            input_schema = tool_obj.args_schema\n            if not input_schema:\n                msg = f\"Empty input schema for tool '{tool_obj.name}'\"\n                raise ValueError(msg)\n\n            schema_inputs = schema_to_langflow_inputs(input_schema)\n            if not schema_inputs:\n                msg = f\"No input parameters defined for tool '{tool_obj.name}'\"\n                await logger.awarning(msg)\n                return []\n\n        except Exception as e:\n            msg = f\"Error validating schema inputs: {e!s}\"\n            await logger.aexception(msg)\n            raise ValueError(msg) from e\n        else:\n            return schema_inputs\n\n    async def _ensure_cached_mcp_stdio_access(self, server_config: dict) -> None:\n        \"\"\"Reapply the current stdio policy before returning cached tools.\"\"\"\n        try:\n            from langflow.api.v2.mcp import ensure_mcp_stdio_access\n            from langflow.services.database.models.user.crud import get_user_by_id\n\n            from lfx.services.deps import get_settings_service\n        except ModuleNotFoundError as e:\n            missing_module = e.name or \"\"\n            if missing_module != \"langflow\" and not missing_module.startswith(\"langflow.\"):\n                raise\n            return\n\n        async with session_scope() as db:\n            if not self.user_id:\n                msg = \"User ID is required for fetching MCP tools.\"\n                raise ValueError(msg)\n            current_user = await get_user_by_id(db, self.user_id)\n\n        ensure_mcp_stdio_access(server_config, current_user, get_settings_service().settings)\n\n    async def update_tool_list(self, mcp_server_value=None):\n        # Accepts mcp_server_value as dict {name, config} or uses self.mcp_server\n        mcp_server = mcp_server_value if mcp_server_value is not None else getattr(self, \"mcp_server\", None)\n        server_name = None\n        server_config_from_value = None\n        if isinstance(mcp_server, dict):\n            server_name = mcp_server.get(\"name\")\n            server_config_from_value = mcp_server.get(\"config\")\n        else:\n            server_name = mcp_server\n        if not server_name:\n            self.tools = []\n            await logger.adebug(\"MCP update_tool_list: empty server_name, clearing tools\")\n            return [], {\"name\": server_name, \"config\": server_config_from_value}\n\n        servers_cache_key = self._mcp_servers_cache_key(server_name)\n\n        # Check if caching is enabled, default to False. The cross-request cache must never\n        # be used without an authenticated tenant scope; the per-instance TTL cache remains\n        # available in standalone/UI contexts.\n        use_cache = getattr(self, \"use_cache\", False)\n        use_shared_cache = use_cache and self._mcp_cache_user_id() is not None\n        header_keys = sorted(self._normalized_headers_for_cache().keys())\n        await logger.adebug(\n            \"MCP update_tool_list: start server=%r use_cache=%s use_shared_cache=%s shared_cache_key=%r header_keys=%s\",\n            server_name,\n            use_cache,\n            use_shared_cache,\n            servers_cache_key,\n            header_keys,\n        )\n\n        async with self._update_tool_list_lock:\n            # Use shared cache if available and caching is enabled\n            cached = None\n            if use_shared_cache:\n                servers_cache = safe_cache_get(self._shared_component_cache, \"servers\", {})\n                cached = servers_cache.get(servers_cache_key) if isinstance(servers_cache, dict) else None\n\n            if cached is not None:\n                try:\n                    tools_from_cache = cached[\"tools\"]\n                    server_config_from_value = cached[\"config\"]\n                except (TypeError, KeyError, AttributeError) as e:\n                    # Handle corrupted cache data by clearing it and continuing to fetch fresh tools\n                    msg = f\"Unable to use cached data for MCP Server{server_name}: {e}\"\n                    await logger.awarning(msg)\n                    # Clear the corrupted cache entry\n                    current_servers_cache = safe_cache_get(self._shared_component_cache, \"servers\", {})\n                    if isinstance(current_servers_cache, dict) and servers_cache_key in current_servers_cache:\n                        current_servers_cache.pop(servers_cache_key)\n                        safe_cache_set(self._shared_component_cache, \"servers\", current_servers_cache)\n                else:\n                    try:\n                        await self._ensure_cached_mcp_stdio_access(server_config_from_value)\n                    except Exception as e:\n                        msg = f\"Error updating tool list: {e!s}\"\n                        await logger.aexception(msg)\n                        raise ValueError(msg) from e\n                    else:\n                        self.tools = tools_from_cache\n                        self.tool_names = [t.name for t in self.tools if hasattr(t, \"name\")]\n                        self._tool_cache = cached[\"tool_cache\"]\n                        await logger.adebug(\n                            \"MCP update_tool_list: shared_servers_cache HIT count=%d server=%r\",\n                            len(self.tools),\n                            server_name,\n                        )\n                        return self.tools, {\"name\": server_name, \"config\": server_config_from_value}\n\n            try:\n                # Try to fetch from database first to ensure we have the latest config.\n                # This ensures database updates (like editing a server) take effect.\n                # When running in LFX standalone mode the full Langflow package and\n                # database may not be available — in that case we skip the DB lookup\n                # and fall back to the config embedded in the flow (server_config_from_value).\n                server_config_from_db = None\n                current_user = None\n                settings_service = None\n                ensure_mcp_stdio_access = None\n                try:\n                    from langflow.api.v2.mcp import ensure_mcp_stdio_access, get_server\n                    from langflow.services.database.models.user.crud import get_user_by_id\n\n                    from lfx.services.deps import get_settings_service\n                except ModuleNotFoundError as e:\n                    # Deliberately `except ModuleNotFoundError` (not `except ImportError`): a\n                    # plain ImportError here means `get_server` / `get_user_by_id` was removed\n                    # from an installed Langflow — a real API break that should NOT be\n                    # swallowed as \"standalone mode\". ModuleNotFoundError alone covers the\n                    # \"Langflow absent\" case.\n                    #\n                    # Even within ModuleNotFoundError, only treat this as LFX standalone mode\n                    # when one of the target Langflow modules is itself missing. Transitive\n                    # ModuleNotFoundError (e.g. a dependency like sqlmodel failing to import\n                    # inside langflow.*) indicates a real bug in the full Langflow stack and\n                    # must surface — otherwise we would silently use a stale flow-embedded\n                    # config when DB config should have taken precedence.\n                    missing_module = e.name or \"\"\n                    is_langflow_standalone = missing_module == \"langflow\" or missing_module.startswith(\"langflow.\")\n                    if not is_langflow_standalone:\n                        raise\n                    await logger.ainfo(\n                        \"Langflow package not available; using MCP server config from flow value (LFX standalone mode).\"\n                    )\n                else:\n                    async with session_scope() as db:\n                        if not self.user_id:\n                            msg = \"User ID is required for fetching MCP tools.\"\n                            raise ValueError(msg)\n                        current_user = await get_user_by_id(db, self.user_id)\n                        settings_service = get_settings_service()\n\n                        # Try to get server config from DB/API\n                        server_config_from_db = await get_server(\n                            server_name,\n                            current_user,\n                            db,\n                            storage_service=get_storage_service(),\n                            settings_service=settings_service,\n                        )\n\n                # Resolve config with proper precedence: DB takes priority, falls back to value\n                server_config = resolve_mcp_config(\n                    server_name=server_name,\n                    server_config_from_value=server_config_from_value,\n                    server_config_from_db=server_config_from_db,\n                )\n\n                if not server_config:\n                    self.tools = []\n                    await logger.awarning(\n                        \"MCP update_tool_list: no server_config after resolve server=%r\",\n                        server_name,\n                    )\n                    msg = (\n                        f\"MCP server '{server_name}' is not configured. \"\n                        \"Add a server with this name in Settings > MCP Servers before running this flow.\"\n                    )\n                    raise ValueError(msg)\n\n                # The REST API applies this policy when a stdio server is registered,\n                # but imported flows can carry the same process-spawning config in the\n                # MCP component value. Reapply the policy to the resolved config at the\n                # component boundary before update_tools reaches the subprocess client.\n                if ensure_mcp_stdio_access is not None and current_user is not None and settings_service is not None:\n                    ensure_mcp_stdio_access(server_config, current_user, settings_service.settings)\n\n                # Add verify_ssl option to server config if not present\n                if \"verify_ssl\" not in server_config:\n                    verify_ssl = getattr(self, \"verify_ssl\", True)\n                    server_config[\"verify_ssl\"] = verify_ssl\n\n                # Merge headers from component input with server config headers\n                # Component headers take precedence over server config headers\n                component_headers = getattr(self, \"headers\", None) or []\n                if component_headers:\n                    # Convert list of {\"key\": k, \"value\": v} to dict\n                    component_headers_dict = {}\n                    if isinstance(component_headers, list):\n                        for item in component_headers:\n                            if isinstance(item, dict) and \"key\" in item and \"value\" in item:\n                                component_headers_dict[item[\"key\"]] = item[\"value\"]\n                    elif isinstance(component_headers, dict):\n                        component_headers_dict = component_headers\n\n                    if component_headers_dict:\n                        existing_headers = server_config.get(\"headers\", {}) or {}\n                        # Ensure existing_headers is a dict (convert from list if needed)\n                        if isinstance(existing_headers, list):\n                            existing_dict = {}\n                            for item in existing_headers:\n                                if isinstance(item, dict) and \"key\" in item and \"value\" in item:\n                                    existing_dict[item[\"key\"]] = item[\"value\"]\n                            existing_headers = existing_dict\n                        merged_headers = {**existing_headers, **component_headers_dict}\n                        server_config[\"headers\"] = merged_headers\n                # Get request_variables from graph context for global variable resolution\n                request_variables = None\n                end_user_id = None\n                if hasattr(self, \"graph\") and self.graph:\n                    if hasattr(self.graph, \"context\"):\n                        request_variables = self.graph.context.get(\"request_variables\")\n                    # Serving-plane end-user id (set by the entry-point scoping); forwarded only\n                    # to allowlisted internal MCP targets by update_tools (fail-closed).\n                    end_user_id = getattr(self.graph, \"end_user_id\", None)\n\n                # Load global variables only when the config actually references them, so a\n                # static config still costs no query -- but a URL-only reference now counts.\n                # The load must NOT be skipped just because the request carried overrides: a\n                # request that overrides one variable still needs every other referenced\n                # variable resolved from the database.\n                db_variables: dict[str, str] | None = None\n                if config_uses_global_variables(server_config):\n                    try:\n                        from lfx.services.deps import get_variable_service\n\n                        variable_service = get_variable_service()\n                        # ``get_all_decrypted_variables`` is DB-service-only; the minimal\n                        # lfx VariableService (now registered by ``lfx serve``) lacks it, so\n                        # skip cleanly rather than raising into the broad except below.\n                        if variable_service and hasattr(variable_service, \"get_all_decrypted_variables\"):\n                            async with session_scope() as db:\n                                db_variables = await variable_service.get_all_decrypted_variables(\n                                    user_id=self.user_id, session=db\n                                )\n                    except Exception as e:  # noqa: BLE001\n                        await logger.awarning(\"Failed to load global variables for MCP component\", exc_info=e)\n\n                # Headers may resolve from either source, per-request values winning on\n                # conflict (matching ``CustomComponent.get_variable``). Dropping the database\n                # side whenever the request carried anything would send an unresolved variable\n                # *name* upstream as the header value (#14604).\n                #\n                # The URL still resolves from the database only, via ``url_variables`` below:\n                # request_variables carry the caller's X-Langflow-Global-Var-* values, and a\n                # caller must not be able to choose where this flow connects.\n                request_variables = {**(db_variables or {}), **(request_variables or {})} or None\n\n                await logger.adebug(\n                    \"MCP update_tool_list: calling update_tools server=%r mode_headers=%s\",\n                    server_name,\n                    sorted((server_config.get(\"headers\") or {}).keys())\n                    if isinstance(server_config.get(\"headers\"), dict)\n                    else \"list-or-empty\",\n                )\n\n                timeout = self._normalize_tool_execution_timeout()\n\n                _, tool_list, tool_cache = await update_tools(\n                    server_name=server_name,\n                    server_config=server_config,\n                    mcp_stdio_client=self.stdio_client,\n                    mcp_streamable_http_client=self.streamable_http_client,\n                    request_variables=request_variables,\n                    url_variables=db_variables,\n                    tool_execution_timeout=timeout,\n                    current_user_id=self.user_id,\n                    end_user_id=end_user_id,\n                )\n\n                self.tool_names = [tool.name for tool in tool_list if hasattr(tool, \"name\")]\n                self._tool_cache = tool_cache\n                self.tools = tool_list\n\n                await logger.adebug(\n                    \"MCP update_tool_list: fetched from MCP count=%d server=%r\",\n                    len(tool_list),\n                    server_name,\n                )\n\n                # Cache the result only if caching is enabled\n                if use_shared_cache:\n                    cache_data = {\n                        \"tools\": tool_list,\n                        \"tool_names\": self.tool_names,\n                        \"tool_cache\": tool_cache,\n                        \"config\": server_config,\n                    }\n\n                    # Safely update the servers cache with bounded size (FIFO eviction).\n                    current_servers_cache = safe_cache_get(self._shared_component_cache, \"servers\", {})\n                    if isinstance(current_servers_cache, dict):\n                        # Because the cache key now includes a header hash, a tenant that\n                        # rotates session tokens would grow this map without bound. Drop\n                        # the oldest entry when over the limit.\n                        max_entries = self.SHARED_SERVERS_CACHE_MAX_ENTRIES\n                        while (\n                            len(current_servers_cache) >= max_entries and servers_cache_key not in current_servers_cache\n                        ):\n                            oldest_key = next(iter(current_servers_cache))\n                            current_servers_cache.pop(oldest_key, None)\n                        current_servers_cache[servers_cache_key] = cache_data\n                        safe_cache_set(self._shared_component_cache, \"servers\", current_servers_cache)\n                        await logger.adebug(\n                            \"MCP update_tool_list: wrote shared_servers_cache key=%r size=%d\",\n                            servers_cache_key,\n                            len(current_servers_cache),\n                        )\n\n            except (TimeoutError, asyncio.TimeoutError) as e:\n                msg = (\n                    f\"Timeout updating tool list: {e!s}. \"\n                    \"Raise ``LANGFLOW_MCP_SERVER_TIMEOUT`` for the deployment if the MCP \"\n                    \"server legitimately needs more time to respond.\"\n                )\n                await logger.aexception(msg)\n                raise TimeoutError(msg) from e\n            except Exception as e:\n                msg = f\"Error updating tool list: {e!s}\"\n                await logger.aexception(msg)\n                raise ValueError(msg) from e\n            else:\n                return tool_list, {\"name\": server_name, \"config\": server_config}\n\n    async def update_build_config(self, build_config: dict, field_value: str, field_name: str | None = None) -> dict:\n        \"\"\"Toggle the visibility of connection-specific fields based on the selected mode.\"\"\"\n        try:\n            is_refresh = bool(build_config.get(\"is_refresh\", False))\n            if field_name == \"tool\":\n                try:\n                    # Always refresh tools when cache is disabled, or when tools list is empty\n                    # This ensures database edits are reflected immediately when cache is disabled\n                    use_cache = getattr(self, \"use_cache\", False)\n                    if is_refresh:\n                        self.tools = []\n                    if is_refresh or len(self.tools) == 0 or not use_cache:\n                        try:\n                            self.tools, build_config[\"mcp_server\"][\"value\"] = await self.update_tool_list()\n                            build_config[\"tool\"][\"options\"] = [tool.name for tool in self.tools]\n                            build_config[\"tool\"][\"placeholder\"] = \"Select a tool\"\n                        except (TimeoutError, asyncio.TimeoutError) as e:\n                            msg = f\"Timeout updating tool list: {e!s}\"\n                            await logger.aexception(msg)\n                            if not build_config[\"tools_metadata\"][\"show\"]:\n                                build_config[\"tool\"][\"show\"] = True\n                                build_config[\"tool\"][\"options\"] = []\n                                build_config[\"tool\"][\"value\"] = \"\"\n                                build_config[\"tool\"][\"placeholder\"] = msg\n                            else:\n                                build_config[\"tool\"][\"show\"] = False\n                        except ValueError as e:\n                            msg = f\"Error updating tool list: {e!s}\"\n                            await logger.aexception(msg)\n                            if not build_config[\"tools_metadata\"][\"show\"]:\n                                build_config[\"tool\"][\"show\"] = True\n                                build_config[\"tool\"][\"options\"] = []\n                                build_config[\"tool\"][\"value\"] = \"\"\n                                build_config[\"tool\"][\"placeholder\"] = msg\n                            else:\n                                build_config[\"tool\"][\"show\"] = False\n\n                    if field_value == \"\":\n                        return build_config\n                    tool_obj = None\n                    for tool in self.tools:\n                        if tool.name == field_value:\n                            tool_obj = tool\n                            break\n                    if tool_obj is None:\n                        msg = f\"Tool {field_value} not found in available tools: {self.tools}\"\n                        await logger.awarning(msg)\n                        return build_config\n                    await self._update_tool_config(build_config, field_value)\n                except Exception as e:\n                    build_config[\"tool\"][\"options\"] = []\n                    msg = f\"Failed to update tools: {e!s}\"\n                    raise ValueError(msg) from e\n                else:\n                    return build_config\n            elif field_name == \"mcp_server\":\n                if not field_value:\n                    build_config[\"tool\"][\"show\"] = False\n                    build_config[\"tool\"][\"options\"] = []\n                    build_config[\"tool\"][\"value\"] = \"\"\n                    build_config[\"tool\"][\"placeholder\"] = \"\"\n                    build_config[\"tool_placeholder\"][\"tool_mode\"] = True\n                    self.remove_non_default_keys(build_config)\n                    return build_config\n\n                build_config[\"tool_placeholder\"][\"tool_mode\"] = True\n\n                current_server_name = field_value.get(\"name\") if isinstance(field_value, dict) else field_value\n                build_config_server_value = build_config.get(\"mcp_server\", {}).get(\"value\")\n                build_config_server_name = (\n                    build_config_server_value.get(\"name\")\n                    if isinstance(build_config_server_value, dict)\n                    else build_config_server_value\n                )\n                servers_cache_key_ui = self._mcp_servers_cache_key(current_server_name) if current_server_name else \"\"\n                _last_selected_server = safe_cache_get(self._shared_component_cache, \"last_selected_server\", \"\")\n                # Only treat as a server change if there was a previous server selection.\n                # Cold cache (_last_selected_server=\"\") on initial flow load is NOT a server change —\n                # the user didn't switch anything, the backend just hasn't seen this component yet.\n                server_changed = bool(\n                    (_last_selected_server and current_server_name != _last_selected_server)\n                    or (build_config_server_name and current_server_name != build_config_server_name)\n                )\n\n                # Determine if \"Tool Mode\" is active by checking if the tool dropdown is hidden.\n                is_in_tool_mode = build_config[\"tools_metadata\"][\"show\"]\n\n                # Get use_cache setting to determine if we should use cached data\n                use_cache = getattr(self, \"use_cache\", False)\n                has_shared_cache_scope = self._mcp_cache_user_id() is not None\n                use_shared_cache = use_cache and has_shared_cache_scope\n\n                # Fast path: if server didn't change and we already have options, keep them as-is\n                # BUT only if caching is enabled, we're in tool mode, or it's the initial load\n                existing_options = build_config.get(\"tool\", {}).get(\"options\") or []\n                if not is_refresh and not server_changed and existing_options:\n                    # In non-tool mode with cache disabled, skip the fast path to force refresh\n                    # BUT on initial load (cold cache), always preserve saved options from the flow\n                    if not is_in_tool_mode and not use_cache and _last_selected_server:\n                        pass  # Continue to refresh logic below (user-initiated with cache disabled)\n                    else:\n                        if not is_in_tool_mode:\n                            build_config[\"tool\"][\"show\"] = True\n                        safe_cache_set(self._shared_component_cache, \"last_selected_server\", current_server_name)\n                        return build_config\n\n                # To avoid unnecessary updates, only proceed if the server has actually changed\n                # OR if caching is disabled (to force refresh in non-tool mode)\n                if (\n                    not is_refresh\n                    and (_last_selected_server in (current_server_name, \"\"))\n                    and build_config[\"tool\"][\"show\"]\n                    and use_shared_cache\n                ):\n                    if current_server_name:\n                        servers_cache = safe_cache_get(self._shared_component_cache, \"servers\", {})\n                        if isinstance(servers_cache, dict):\n                            cached = servers_cache.get(servers_cache_key_ui)\n                            if cached is not None and cached.get(\"tool_names\"):\n                                cached_tools = cached[\"tool_names\"]\n                                current_tools = build_config[\"tool\"][\"options\"]\n                                if current_tools == cached_tools:\n                                    return build_config\n                    else:\n                        return build_config\n                safe_cache_set(self._shared_component_cache, \"last_selected_server\", current_server_name)\n\n                # When cache is disabled, clear any cached data for this server\n                # This ensures we always fetch fresh data from the database\n                if (is_refresh or not use_cache) and current_server_name and has_shared_cache_scope:\n                    servers_cache = safe_cache_get(self._shared_component_cache, \"servers\", {})\n                    if isinstance(servers_cache, dict) and servers_cache_key_ui in servers_cache:\n                        servers_cache.pop(servers_cache_key_ui)\n                        safe_cache_set(self._shared_component_cache, \"servers\", servers_cache)\n\n                # Check if tools are already cached for this server before clearing\n                cached_tools = None\n                if current_server_name and use_shared_cache and not is_refresh:\n                    servers_cache = safe_cache_get(self._shared_component_cache, \"servers\", {})\n                    if isinstance(servers_cache, dict):\n                        cached = servers_cache.get(servers_cache_key_ui)\n                        if cached is not None:\n                            try:\n                                cached_tools = cached[\"tools\"]\n                                self.tools = cached_tools\n                                self.tool_names = cached[\"tool_names\"]\n                                self._tool_cache = cached[\"tool_cache\"]\n                            except (TypeError, KeyError, AttributeError) as e:\n                                # Handle corrupted cache data by ignoring it\n                                msg = f\"Unable to use cached data for MCP Server,{current_server_name}: {e}\"\n                                await logger.awarning(msg)\n                                cached_tools = None\n\n                # Clear tools when cache is disabled OR when we don't have cached tools\n                # This ensures fresh tools are fetched after database edits\n                if is_refresh or not cached_tools or not use_cache:\n                    self.tools = []  # Clear previous tools to force refresh\n\n                # Clear previous tool inputs if:\n                # 1. Server actually changed\n                # 2. Cache is disabled (meaning tool list will be refreshed)\n                if is_refresh or server_changed or not use_cache:\n                    self.remove_non_default_keys(build_config)\n\n                # Only show the tool dropdown if not in tool_mode\n                if not is_in_tool_mode:\n                    build_config[\"tool\"][\"show\"] = True\n                    if cached_tools:\n                        # Use cached tools to populate options immediately\n                        build_config[\"tool\"][\"options\"] = [tool.name for tool in cached_tools]\n                        build_config[\"tool\"][\"placeholder\"] = \"Select a tool\"\n                    else:\n                        # Actually fetch tools now instead of deferring to a frontend callback.\n                        # The frontend has no reliable mechanism to trigger a second\n                        # update_build_config call for the \"tool\" field after this response,\n                        # so we must populate the options here.\n                        try:\n                            self.tools, build_config[\"mcp_server\"][\"value\"] = await self.update_tool_list(\n                                mcp_server_value=field_value\n                            )\n                            build_config[\"tool\"][\"options\"] = [tool.name for tool in self.tools]\n                            build_config[\"tool\"][\"placeholder\"] = \"Select a tool\"\n                        except (TimeoutError, asyncio.TimeoutError) as e:\n                            msg = f\"Timeout loading tools for MCP server: {e!s}\"\n                            await logger.aexception(msg)\n                            build_config[\"tool\"][\"options\"] = []\n                            build_config[\"tool\"][\"placeholder\"] = \"Timeout on MCP server\"\n                        except (ValueError, ImportError, ConnectionError, OSError, RuntimeError) as e:\n                            msg = f\"Error loading tools for MCP server: {e!s}\"\n                            await logger.aexception(msg)\n                            build_config[\"tool\"][\"options\"] = []\n                            build_config[\"tool\"][\"placeholder\"] = (\n                                \"Error on MCP Server\" if \"'NoneType' object has no attribute 'id'\" in msg else msg\n                            )\n                    # Force a value refresh only when the user genuinely switched servers.\n                    # server_changed is only True for real user-initiated changes (not initial load).\n                    if server_changed:\n                        build_config[\"tool\"][\"value\"] = uuid.uuid4()\n                else:\n                    # Keep the tool dropdown hidden if in tool_mode\n                    self._not_load_actions = True\n                    build_config[\"tool\"][\"show\"] = False\n\n            elif field_name == \"tool_mode\":\n                build_config[\"tool\"][\"placeholder\"] = \"\"\n                build_config[\"tool\"][\"show\"] = not bool(field_value) and bool(build_config[\"mcp_server\"])\n                self.remove_non_default_keys(build_config)\n                self.tool = build_config[\"tool\"][\"value\"]\n                if field_value:\n                    self._not_load_actions = True\n                else:\n                    build_config[\"tool\"][\"value\"] = uuid.uuid4()\n                    build_config[\"tool\"][\"show\"] = True\n                    # Fetch tools immediately instead of showing \"Loading tools...\"\n                    try:\n                        self.tools, build_config[\"mcp_server\"][\"value\"] = await self.update_tool_list()\n                        build_config[\"tool\"][\"options\"] = [tool.name for tool in self.tools]\n                        build_config[\"tool\"][\"placeholder\"] = \"Select a tool\"\n                    except (TimeoutError, asyncio.TimeoutError) as e:\n                        msg = f\"Timeout loading tools when toggling tool mode: {e!s}\"\n                        await logger.aexception(msg)\n                        build_config[\"tool\"][\"options\"] = []\n                        build_config[\"tool\"][\"placeholder\"] = msg\n                    except (ValueError, ImportError, ConnectionError, OSError, RuntimeError) as e:\n                        msg = f\"Error loading tools when toggling tool mode: {e!s}\"\n                        await logger.aexception(msg)\n                        build_config[\"tool\"][\"options\"] = []\n                        build_config[\"tool\"][\"placeholder\"] = msg\n            elif field_name == \"tool_execution_timeout\":\n                try:\n                    val = float(field_value) if field_value not in (None, \"\") else 0.0\n                except (ValueError, TypeError):\n                    val = 0.0\n                if val < 0:\n                    build_config[\"tool_execution_timeout\"][\"placeholder\"] = (\n                        \"⚠ Value must be ≥ 0. Negative timeouts cause immediate failures.\"\n                    )\n                    build_config[\"tool_execution_timeout\"][\"value\"] = 0.0\n                else:\n                    build_config[\"tool_execution_timeout\"][\"placeholder\"] = \"\"\n            elif field_name == \"tools_metadata\":\n                self._not_load_actions = False\n\n        except Exception as e:\n            msg = f\"Error in update_build_config: {e!s}\"\n            await logger.aexception(msg)\n            raise ValueError(msg) from e\n        else:\n            return build_config\n\n    @staticmethod\n    def _unwrap_optional_annotation(annotation: Any) -> Any:\n        \"\"\"Remove a single None branch from a union annotation.\"\"\"\n        if isinstance(annotation, UnionType):\n            non_none = [item for item in get_args(annotation) if item is not type(None)]\n            if len(non_none) == 1:\n                return non_none[0]\n            return annotation\n\n        if get_origin(annotation) is None:\n            return annotation\n\n        non_none = [item for item in get_args(annotation) if item is not type(None)]\n        if len(non_none) == 1 and len(non_none) != len(get_args(annotation)):\n            return non_none[0]\n        return annotation\n\n    @classmethod\n    def _is_object_like_annotation(cls, annotation: Any) -> bool:\n        \"\"\"Return True when the annotation represents a dict-like payload.\"\"\"\n        annotation = cls._unwrap_optional_annotation(annotation)\n        origin = get_origin(annotation)\n        if origin is dict:\n            return True\n        return annotation is dict or (isinstance(annotation, type) and issubclass(annotation, BaseModel))\n\n    @classmethod\n    def _should_include_tool_argument(cls, model_field: Any, value: Any) -> bool:\n        \"\"\"Omit blank optional values so MCP server defaults remain intact.\"\"\"\n        if value is None:\n            return False\n\n        if model_field.is_required():\n            return True\n\n        if isinstance(value, str) and value == \"\":\n            return False\n\n        return not (\n            value == {} and model_field.default is None and cls._is_object_like_annotation(model_field.annotation)\n        )\n\n    def _build_tool_kwargs(self, args_schema: type[BaseModel]) -> dict[str, Any]:\n        \"\"\"Collect tool kwargs from component inputs, omitting blank optional values.\"\"\"\n        kwargs: dict[str, Any] = {}\n        for arg_name, model_field in args_schema.model_fields.items():\n            # MCP argument names come from the server and can match component methods or metadata.\n            value = self._attributes.get(arg_name)\n            if arg_name not in self._attributes and arg_name in self._inputs:\n                value = self._inputs[arg_name].value\n            if isinstance(value, Message):\n                value = value.text\n\n            if self._should_include_tool_argument(model_field, value):\n                kwargs[arg_name] = value\n\n        return kwargs\n\n    def get_inputs_for_all_tools(self, tools: list) -> dict:\n        \"\"\"Get input schemas for all tools.\"\"\"\n        inputs = {}\n        for tool in tools:\n            if not tool or not hasattr(tool, \"name\"):\n                continue\n            try:\n                langflow_inputs = schema_to_langflow_inputs(tool.args_schema)\n                inputs[tool.name] = langflow_inputs\n            except (AttributeError, ValueError, TypeError, KeyError) as e:\n                msg = f\"Error getting inputs for tool {getattr(tool, 'name', 'unknown')}: {e!s}\"\n                logger.exception(msg)\n                continue\n        return inputs\n\n    def remove_non_default_keys(self, build_config: dict) -> None:\n        \"\"\"Remove non-default keys from the build config.\"\"\"\n        for key in list(build_config.keys()):\n            if key not in self.default_keys:\n                build_config.pop(key)\n\n    async def _update_tool_config(self, build_config: dict, tool_name: str) -> None:\n        \"\"\"Update tool configuration with proper error handling.\"\"\"\n        if not self.tools:\n            self.tools, build_config[\"mcp_server\"][\"value\"] = await self.update_tool_list()\n\n        if not tool_name:\n            return\n\n        tool_obj = next((tool for tool in self.tools if tool.name == tool_name), None)\n        if not tool_obj:\n            msg = f\"Tool {tool_name} not found in available tools: {self.tools}\"\n            self.remove_non_default_keys(build_config)\n            build_config[\"tool\"][\"value\"] = \"\"\n            await logger.awarning(msg)\n            return\n\n        try:\n            # Store current values before removing inputs (only for the current tool)\n            current_values = {}\n            for key, value in build_config.items():\n                if key not in self.default_keys and isinstance(value, dict) and \"value\" in value:\n                    current_values[key] = value[\"value\"]\n\n            # Remove ALL non-default keys (all previous tool inputs)\n            self.remove_non_default_keys(build_config)\n\n            # Get and validate new inputs for the selected tool\n            self.schema_inputs = await self._validate_schema_inputs(tool_obj)\n            if not self.schema_inputs:\n                msg = f\"No input parameters to configure for tool '{tool_name}'\"\n                await logger.ainfo(msg)\n                return\n\n            # Add new inputs to build config for the selected tool only\n            for schema_input in self.schema_inputs:\n                if not schema_input or not hasattr(schema_input, \"name\"):\n                    msg = \"Invalid schema input detected, skipping\"\n                    await logger.awarning(msg)\n                    continue\n\n                try:\n                    name = schema_input.name\n                    input_dict = schema_input.to_dict()\n                    input_dict.setdefault(\"value\", None)\n                    input_dict.setdefault(\"required\", True)\n\n                    build_config[name] = input_dict\n\n                    # Preserve existing value if the parameter name exists in current_values\n                    if name in current_values:\n                        build_config[name][\"value\"] = current_values[name]\n\n                except (AttributeError, KeyError, TypeError) as e:\n                    msg = f\"Error processing schema input {schema_input}: {e!s}\"\n                    await logger.aexception(msg)\n                    continue\n        except ValueError as e:\n            msg = f\"Schema validation error for tool {tool_name}: {e!s}\"\n            await logger.aexception(msg)\n            self.schema_inputs = []\n            return\n        except (AttributeError, KeyError, TypeError) as e:\n            msg = f\"Error updating tool config: {e!s}\"\n            await logger.aexception(msg)\n            raise ValueError(msg) from e\n\n    async def build_output(self) -> DataFrame:\n        \"\"\"Build output with improved error handling and validation.\"\"\"\n        try:\n            self.tools, _ = await self.update_tool_list()\n            if self.tool != \"\":\n                # Set session context for persistent MCP sessions using Langflow session ID\n                session_context = self._get_session_context()\n                if session_context:\n                    self.stdio_client.set_session_context(session_context)\n                    self.streamable_http_client.set_session_context(session_context)\n                exec_tool = self._tool_cache[self.tool]\n                kwargs = self._build_tool_kwargs(exec_tool.args_schema)\n                unflattened_kwargs = maybe_unflatten_dict(kwargs)\n\n                output = await exec_tool.coroutine(**unflattened_kwargs)\n                if getattr(output, \"isError\", False):\n                    # isError=True is a FAILED call; treating its content as data makes it look successful.\n                    error_text = \" \".join(str(item.model_dump().get(\"text\") or \"\") for item in output.content).strip()\n                    msg = f\"MCP tool '{self.tool}' failed: {error_text or 'no error detail provided'}\"\n                    raise ValueError(msg)\n                tool_content = []\n                for item in output.content:\n                    item_dict = item.model_dump()\n                    item_dict = self.process_output_item(item_dict)\n                    tool_content.append(item_dict)\n\n                if isinstance(tool_content, list) and all(isinstance(x, dict) for x in tool_content):\n                    return DataFrame(tool_content)\n                return DataFrame(data=tool_content)\n            return DataFrame(data=[{\"error\": \"You must select a tool\"}])\n        except Exception as e:\n            msg = f\"Error in build_output: {e!s}\"\n            await logger.aexception(msg)\n            raise ValueError(msg) from e\n\n    def process_output_item(self, item_dict):\n        \"\"\"Process the output of a tool.\"\"\"\n        if item_dict.get(\"type\") == \"text\":\n            text = item_dict.get(\"text\")\n            try:\n                parsed = json.loads(text)\n                # Ensure we always return a dictionary for DataFrame compatibility\n                if isinstance(parsed, dict):\n                    return parsed\n                # Wrap non-dict parsed values in a dictionary\n                return {\"text\": text, \"parsed_value\": parsed, \"type\": \"text\"}  # noqa: TRY300\n            except json.JSONDecodeError:\n                return item_dict\n        return item_dict\n\n    def _get_session_context(self) -> str | None:\n        \"\"\"Get the Langflow session ID for MCP session caching.\"\"\"\n        # Try to get session ID from the component's execution context\n        if hasattr(self, \"graph\") and hasattr(self.graph, \"session_id\"):\n            session_id = self.graph.session_id\n            # Include server name to ensure different servers get different sessions\n            server_name = \"\"\n            mcp_server = getattr(self, \"mcp_server\", None)\n            if isinstance(mcp_server, dict):\n                server_name = mcp_server.get(\"name\", \"\")\n            elif mcp_server:\n                server_name = str(mcp_server)\n            return f\"{session_id}_{server_name}\" if session_id else None\n        return None\n\n    async def _get_tools(self):\n        \"\"\"Load tools for the agent toolkit; always refresh from ``update_tool_list``.\n\n        ``_not_load_actions`` only applies to UI build_config flows (tool dropdown). Agent\n        runs must always bind the current tool list (including after header/tweak changes).\n\n        A short-lived TTL cache (``TOOL_TTL_SECS``, header-hash-keyed) skips the MCP\n        round-trip when the same auth context is re-queried quickly (e.g. parallel agent\n        steps sharing the same tweaked headers). The cache is per component lineage (including\n        isolated invocation copies) and bounded by ``TOOL_TTL_MAX_ENTRIES``; it is distinct from\n        the \"Use Cached Server\" (``use_cache``) toggle which controls the shared cross-request cache.\n        \"\"\"\n        mcp_server = getattr(self, \"mcp_server\", None)\n        srv = mcp_server.get(\"name\") if isinstance(mcp_server, dict) else mcp_server\n\n        ttl = self.TOOL_TTL_SECS\n        ttl_key = self._mcp_servers_cache_key(srv or \"\") if ttl > 0 and srv else \"\"\n\n        # TTL cache lookup + expired-entry eviction.\n        if ttl > 0 and ttl_key:\n            cached = self._ttl_tool_cache.get(ttl_key)\n            if cached is not None:\n                ts, cached_tools = cached\n                age = time.monotonic() - ts\n                if age < ttl:\n                    await logger.adebug(\n                        \"MCP _get_tools: TTL cache hit count=%d age=%.1fs server=%r\",\n                        len(cached_tools),\n                        age,\n                        srv,\n                    )\n                    return cached_tools\n                # Stale — drop it so the size check below stays tight.\n                self._ttl_tool_cache.pop(ttl_key, None)\n\n        await logger.adebug(\"MCP _get_tools: fetching tool list server=%r\", srv)\n        tools, _ = await self.update_tool_list(mcp_server)\n        await logger.adebug(\"MCP _get_tools: fetched %d tools server=%r\", len(tools), srv)\n\n        # TTL cache store with bounded size (FIFO eviction of the oldest entry).\n        if ttl > 0 and ttl_key and tools:\n            if len(self._ttl_tool_cache) >= self.TOOL_TTL_MAX_ENTRIES:\n                # dict preserves insertion order — pop the oldest entry.\n                oldest_key = next(iter(self._ttl_tool_cache))\n                self._ttl_tool_cache.pop(oldest_key, None)\n            self._ttl_tool_cache[ttl_key] = (time.monotonic(), tools)\n\n        return tools\n"
-              },
-              "headers": {
-                "_input_type": "DictInput",
-                "advanced": true,
-                "api_editable": false,
-                "display_name": "Headers",
-                "dynamic": false,
-                "info": "HTTP headers to include with MCP server requests. Useful for authentication (e.g., Authorization header). These headers override any headers configured in the MCP server settings.",
-                "list": true,
-                "list_add_label": "Add More",
-                "name": "headers",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_input": true,
-                "track_in_telemetry": false,
-                "type": "dict",
-                "value": {}
-              },
-              "mcp_server": {
-                "_input_type": "McpInput",
-                "advanced": false,
-                "api_editable": false,
-                "display_name": "MCP Server",
-                "dynamic": false,
-                "info": "Select the MCP Server that will be used by this component",
-                "name": "mcp_server",
-                "override_skip": false,
-                "placeholder": "",
-                "real_time_refresh": true,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "mcp",
-                "value": {
-                  "name": "tasksprint-product-owner",
-                  "config": {
-                    "headers": {
-                      "Authorization": "MCP_TASKSPRINT_PRODUCT_OWNER_AUTHORIZATION_09FAF56A",
-                      "X-TaskSprint-Workspace": "MCP_TASKSPRINT_PRODUCT_OWNER_X_TASKSPRINT_WORKSPACE_9E67D348"
-                    },
-                    "url": "https://tasksprint-lab-production.up.railway.app/mcp",
-                    "verify_ssl": true
-                  }
-                }
-              },
-              "tool": {
-                "_input_type": "DropdownInput",
-                "advanced": false,
-                "api_editable": false,
-                "combobox": false,
-                "dialog_inputs": {},
-                "display_name": "Tool",
-                "dynamic": false,
-                "external_options": {},
-                "info": "Select the tool to execute",
-                "name": "tool",
-                "options": [
-                  "get_sprint_state",
-                  "search_approved_knowledge"
-                ],
-                "options_metadata": [],
-                "override_skip": false,
-                "placeholder": "",
-                "real_time_refresh": true,
-                "refresh_button": true,
-                "required": true,
-                "show": false,
-                "title_case": false,
-                "toggle": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "str",
-                "value": ""
-              },
-              "tool_execution_timeout": {
-                "_input_type": "FloatInput",
-                "advanced": true,
-                "api_editable": false,
-                "display_name": "Tool Execution Timeout (seconds)",
-                "dynamic": false,
-                "info": "Maximum time to wait for tool execution before timing out. Supports decimal values for sub-second timeouts (e.g., 0.01 for 10ms). Set to 0 to use the system-configured MCP timeout.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "tool_execution_timeout",
-                "override_skip": false,
-                "placeholder": "",
-                "range_spec": {
-                  "max": 3600,
-                  "min": 0,
-                  "step": 0.01,
-                  "step_type": "float"
-                },
-                "real_time_refresh": true,
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "float",
-                "value": 0
-              },
-              "tool_placeholder": {
-                "_input_type": "MessageTextInput",
-                "advanced": false,
-                "api_editable": false,
-                "display_name": "Tool Placeholder",
-                "dynamic": false,
-                "info": "Placeholder for the tool",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "load_from_db": false,
-                "name": "tool_placeholder",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": false,
-                "title_case": false,
-                "tool_mode": true,
-                "trace_as_input": true,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "str",
-                "value": ""
-              },
-              "use_cache": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "api_editable": false,
-                "display_name": "Use Cached Server",
-                "dynamic": false,
-                "info": "Enable caching of MCP Server and tools to improve performance. Disable to always fetch fresh tools and server updates.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "use_cache",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "bool",
-                "value": false
-              },
-              "verify_ssl": {
-                "_input_type": "BoolInput",
-                "advanced": true,
-                "api_editable": false,
-                "display_name": "Verify SSL Certificate",
-                "dynamic": false,
-                "info": "Enable SSL certificate verification for HTTPS connections. Disable only for development/testing with self-signed certificates.",
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "verify_ssl",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": true,
-                "type": "bool",
-                "value": true
-              },
-              "tools_metadata": {
-                "tool_mode": false,
-                "trace_as_metadata": true,
-                "is_list": true,
-                "list_add_label": "Add More",
-                "override_skip": false,
-                "required": false,
-                "placeholder": "",
-                "show": true,
-                "name": "tools_metadata",
-                "value": [
+            "field_order": [
+              "run_info",
+              "expected_role",
+              "role_token",
+              "api_base",
+              "workspace",
+              "max_actions",
+              "invocation_timeout_s",
+              "tool_timeout_s",
+              "max_depth",
+              "max_repairs",
+              "delegation_timeout_s",
+              "product_owner_flow",
+              "developer_flow",
+              "qa_flow"
+            ],
+            "beta": false,
+            "legacy": false,
+            "edited": false,
+            "metadata": {
+              "module": "custom_components.tasksprint_bounded_toolset",
+              "code_hash": "05242b55ba19",
+              "dependencies": {
+                "total_dependencies": 6,
+                "dependencies": [
                   {
-                    "name": "get_sprint_state",
-                    "description": "Read the canonical sprint/story state, stages, revisions and evidence references.",
-                    "tags": [
-                      "get_sprint_state"
-                    ],
-                    "status": true,
-                    "approval_actions": [],
-                    "display_name": "get_sprint_state",
-                    "display_description": "Read the canonical sprint/story state, stages, revisions and evidence references.",
-                    "readonly": false,
-                    "args": {}
+                    "name": "anyio",
+                    "version": "4.14.2"
                   },
                   {
-                    "name": "search_approved_knowledge",
-                    "description": "Search APPROVED, currently effective requirement documents. Returns up to three passages with citations {doc_id, version, section, owner, hash}, or an explicit abstention.",
-                    "tags": [
-                      "search_approved_knowledge"
-                    ],
-                    "status": true,
-                    "approval_actions": [],
-                    "display_name": "search_approved_knowledge",
-                    "display_description": "Search APPROVED, currently effective requirement documents. Returns up to three passages with citations {doc_id, version, section, owner, hash}, or an explicit abstention.",
-                    "readonly": false,
-                    "args": {
-                      "query": {
-                        "title": "Query",
-                        "type": "string"
-                      }
-                    }
+                    "name": "httpx",
+                    "version": "0.28.1"
+                  },
+                  {
+                    "name": "langchain_core",
+                    "version": "1.5.1"
+                  },
+                  {
+                    "name": "pydantic",
+                    "version": "2.13.4"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": "1.12.5"
+                  },
+                  {
+                    "name": "mcp",
+                    "version": "1.28.1"
                   }
-                ],
-                "display_name": "Actions",
-                "advanced": false,
-                "api_editable": false,
-                "dynamic": false,
-                "info": "Modify tool names and descriptions to help agents understand when to use each tool.",
-                "real_time_refresh": true,
-                "title_case": false,
-                "track_in_telemetry": false,
-                "type": "tools",
-                "_input_type": "ToolsInput"
-              },
-              "_frontend_node_flow_id": {
-                "value": "da674f03-2861-4b3f-9f25-129bb86a588f"
-              },
-              "_frontend_node_folder_id": {
-                "value": "9c4defb4-3457-4e34-9668-b940fadb030f"
-              },
-              "is_refresh": false
+                ]
+              }
             },
-            "tool_mode": true,
-            "mcpServerName": "tasksprint-product-owner",
-            "category": "MCP",
-            "key": "mcp_tasksprint-product-owner",
-            "last_updated": "2026-10-20T11:48:51.224Z",
-            "lf_version": "1.12.5"
+            "tool_mode": false
           },
           "showNode": true,
-          "type": "MCP",
-          "id": "MCP-Bnivv"
-        },
-        "selected": false,
-        "measured": {
-          "width": 320,
-          "height": 321
-        },
-        "dragging": false
+          "type": "TaskSprintBoundedToolset",
+          "id": "TaskSprintBoundedToolset-hEZdx"
+        }
       }
     ],
     "edges": [
@@ -2087,8 +2197,37 @@
         "className": ""
       },
       {
-        "source": "MCP-Bnivv",
-        "sourceHandle": "{œdataTypeœ:œMCPœ,œidœ:œMCP-Bnivvœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
+        "source": "TaskSprintRunContext-LhZyb",
+        "sourceHandle": "{œdataTypeœ:œTaskSprintRunContextœ,œidœ:œTaskSprintRunContext-LhZybœ,œnameœ:œrunœ,œoutput_typesœ:[œJSONœ]}",
+        "target": "TaskSprintBoundedToolset-hEZdx",
+        "targetHandle": "{œfieldNameœ:œrun_infoœ,œidœ:œTaskSprintBoundedToolset-hEZdxœ,œinputTypesœ:[œDataœ,œJSONœ],œtypeœ:œotherœ}",
+        "data": {
+          "targetHandle": {
+            "fieldName": "run_info",
+            "id": "TaskSprintBoundedToolset-hEZdx",
+            "inputTypes": [
+              "Data",
+              "JSON"
+            ],
+            "type": "other"
+          },
+          "sourceHandle": {
+            "dataType": "TaskSprintRunContext",
+            "id": "TaskSprintRunContext-LhZyb",
+            "name": "run",
+            "output_types": [
+              "JSON"
+            ]
+          }
+        },
+        "id": "xy-edge__TaskSprintRunContext-LhZyb{œdataTypeœ:œTaskSprintRunContextœ,œidœ:œTaskSprintRunContext-LhZybœ,œnameœ:œrunœ,œoutput_typesœ:[œJSONœ]}-TaskSprintBoundedToolset-hEZdx{œfieldNameœ:œrun_infoœ,œidœ:œTaskSprintBoundedToolset-hEZdxœ,œinputTypesœ:[œDataœ,œJSONœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "animated": false,
+        "className": ""
+      },
+      {
+        "source": "TaskSprintBoundedToolset-hEZdx",
+        "sourceHandle": "{œdataTypeœ:œTaskSprintBoundedToolsetœ,œidœ:œTaskSprintBoundedToolset-hEZdxœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}",
         "target": "Agent-MJEbx",
         "targetHandle": "{œfieldNameœ:œtoolsœ,œidœ:œAgent-MJEbxœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
         "data": {
@@ -2101,18 +2240,18 @@
             "type": "other"
           },
           "sourceHandle": {
-            "dataType": "MCP",
-            "id": "MCP-Bnivv",
+            "dataType": "TaskSprintBoundedToolset",
+            "id": "TaskSprintBoundedToolset-hEZdx",
             "name": "component_as_tool",
             "output_types": [
               "Tool"
             ]
           }
         },
-        "id": "xy-edge__MCP-Bnivv{œdataTypeœ:œMCPœ,œidœ:œMCP-Bnivvœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}-Agent-MJEbx{œfieldNameœ:œtoolsœ,œidœ:œAgent-MJEbxœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
+        "id": "xy-edge__TaskSprintBoundedToolset-hEZdx{œdataTypeœ:œTaskSprintBoundedToolsetœ,œidœ:œTaskSprintBoundedToolset-hEZdxœ,œnameœ:œcomponent_as_toolœ,œoutput_typesœ:[œToolœ]}-Agent-MJEbx{œfieldNameœ:œtoolsœ,œidœ:œAgent-MJEbxœ,œinputTypesœ:[œToolœ],œtypeœ:œotherœ}",
+        "selected": false,
         "animated": false,
-        "className": "",
-        "selected": false
+        "className": ""
       }
     ],
     "viewport": {
