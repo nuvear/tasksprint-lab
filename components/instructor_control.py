@@ -19,7 +19,8 @@
 # snapshot hash shown here. Outputs: "Review" (only for a reviewable plan; feeds Human Input) and
 # "Result" (everything else; feeds a Chat Output). The unused output is stopped so its branch never runs.
 # Never place this flow on an MCP server, publish it over A2A, or give it to an agent as a tool.
-# Version 1.0.0. Source of truth: tasksprint-lab/components/instructor_control.py
+# 1.0.1: usage text without angle brackets (the Playground renders messages as Markdown).
+# Version 1.0.1. Source of truth: tasksprint-lab/components/instructor_control.py
 from __future__ import annotations
 
 import json
@@ -32,7 +33,7 @@ from lfx.custom.custom_component.component import Component
 from lfx.io import MessageInput, MessageTextInput, Output, SecretStrInput
 from lfx.schema.message import Message
 
-ADAPTER_VERSION = "instructor_control/1.0.0"
+ADAPTER_VERSION = "instructor_control/1.0.1"
 WORKSPACE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
 MAX_LINE = 120
 GRAMMAR = (
@@ -47,9 +48,9 @@ GRAMMAR = (
     ("reset_preview", re.compile(r"^reset preview$", re.I)),
     ("reset_confirm", re.compile(r"^reset confirm ([a-z0-9][a-z0-9-]{2,63})$")),
 )
-USAGE = ("Accepted commands (one per message): confirm scope ST-001 | review plan_<id> | load fixture faulty|reference"
-         " | drill enable cand_<id> [minutes] | drill disable cand_<id> | stop | resume | run evals | reset preview"
-         " | reset confirm <workspace>. Nothing was sent.")
+USAGE = ("Accepted commands (one per message): confirm scope ST-001 | review PLAN_ID | load fixture faulty or reference"
+         " | drill enable CANDIDATE_ID [minutes] | drill disable CANDIDATE_ID | stop | resume | run evals | reset preview"
+         " | reset confirm WORKSPACE. Nothing was sent.")
 FIXTURES = {"faulty": "faulty_delete", "reference": "reference_complete"}
 REF_LINE = "TS-REVIEW-REF"
 

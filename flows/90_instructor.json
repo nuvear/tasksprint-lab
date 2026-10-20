@@ -1,0 +1,2465 @@
+{
+  "name": "TS-90 Instructor Console",
+  "description": "TaskSprint Phase 09: human-only control flow (no Agent). Typed commands; review PLAN_ID pauses at native Human Input and records the human decision against the exact snapshot hash. Never on MCP, A2A or any agent's tools.",
+  "icon": null,
+  "icon_bg_color": null,
+  "gradient": null,
+  "data": {
+    "nodes": [
+      {
+        "id": "ChatInput-g4WT9",
+        "type": "genericNode",
+        "position": {
+          "x": -320,
+          "y": 300
+        },
+        "selected": false,
+        "data": {
+          "node": {
+            "base_classes": [
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Get chat inputs from the Playground.",
+            "display_name": "Chat Input",
+            "documentation": "https://docs.langflow.org/chat-input-and-output",
+            "edited": false,
+            "field_order": [
+              "input_value",
+              "should_store_message",
+              "sender",
+              "sender_name",
+              "session_id",
+              "context_id",
+              "files"
+            ],
+            "frozen": false,
+            "icon": "MessagesSquare",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "45974e6b1909",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 1
+              },
+              "module": "lfx.components.input_output.chat.ChatInput"
+            },
+            "minimized": true,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Chat Message",
+                "group_outputs": false,
+                "method": "message_response",
+                "name": "message",
+                "selected": "Message",
+                "tool_mode": true,
+                "types": [
+                  "Message"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "from lfx.base.data.utils import IMG_FILE_TYPES, TEXT_FILE_TYPES\nfrom lfx.base.io.chat import ChatComponent\nfrom lfx.inputs.inputs import BoolInput\nfrom lfx.io import (\n    DropdownInput,\n    FileInput,\n    MessageTextInput,\n    MultilineInput,\n    Output,\n)\nfrom lfx.schema.image import get_file_paths\nfrom lfx.schema.message import Message\nfrom lfx.services.deps import get_settings_service\nfrom lfx.utils.constants import (\n    MESSAGE_SENDER_AI,\n    MESSAGE_SENDER_NAME_USER,\n    MESSAGE_SENDER_USER,\n)\nfrom lfx.utils.file_path_security import (\n    component_file_access_scopes,\n    enforce_local_file_access,\n    is_local_file_access_restricted,\n)\n\n\nclass ChatInput(ChatComponent):\n    display_name = \"Chat Input\"\n    description = \"Get chat inputs from the Playground.\"\n    documentation: str = \"https://docs.langflow.org/chat-input-and-output\"\n    icon = \"MessagesSquare\"\n    name = \"ChatInput\"\n    minimized = True\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Input Text\",\n            value=\"\",\n            info=\"Message to be passed as input.\",\n            input_types=[],\n        ),\n        BoolInput(\n            name=\"should_store_message\",\n            display_name=\"Store Messages\",\n            info=\"Store the message in the history.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"sender\",\n            display_name=\"Sender Type\",\n            options=[MESSAGE_SENDER_AI, MESSAGE_SENDER_USER],\n            value=MESSAGE_SENDER_USER,\n            info=\"Type of sender.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"sender_name\",\n            display_name=\"Sender Name\",\n            info=\"Name of the sender.\",\n            value=MESSAGE_SENDER_NAME_USER,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"session_id\",\n            display_name=\"Session ID\",\n            info=\"The session ID of the chat. If empty, the current session ID parameter will be used.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"context_id\",\n            display_name=\"Context ID\",\n            info=\"The context ID of the chat. Adds an extra layer to the local memory.\",\n            value=\"\",\n            advanced=True,\n        ),\n        FileInput(\n            name=\"files\",\n            display_name=\"Files\",\n            file_types=TEXT_FILE_TYPES + IMG_FILE_TYPES,\n            info=\"Files to be sent with the message.\",\n            advanced=True,\n            is_list=True,\n            temp_file=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Chat Message\", name=\"message\", method=\"message_response\"),\n    ]\n\n    async def message_response(self) -> Message:\n        # Ensure files is a list and filter out empty/None values\n        files = self.files if self.files else []\n        if files and not isinstance(files, list):\n            files = [files]\n        # Filter out None/empty values\n        files = [f for f in files if f is not None and f != \"\"]\n\n        # Build endpoints inject caller-controlled file references directly into\n        # ChatInput. Resolve and validate local references before the Message can\n        # later read them while constructing model attachment content.\n        if files:\n            settings_service = get_settings_service()\n            storage_type = getattr(getattr(settings_service, \"settings\", None), \"storage_type\", \"local\")\n            # The storage factory falls back to local storage for unsupported\n            # values, so only the explicitly configured S3 backend may bypass\n            # filesystem containment.\n            if str(storage_type).lower() != \"s3\" and is_local_file_access_restricted():\n                scope_ids = list(component_file_access_scopes(self))\n                # Public executions replace graph.flow_id with a per-visitor\n                # virtual ID. Only the server-populated source provenance may\n                # restore the already-validated public attachment namespace.\n                source_flow_id = getattr(self.graph, \"source_flow_id\", None)\n                if source_flow_id:\n                    scope_ids.append(source_flow_id)\n                for file_path in get_file_paths(files):\n                    enforce_local_file_access(file_path, scope_ids=scope_ids)\n\n        session_id = self.session_id or self.graph.session_id or \"\"\n        message = await Message.create(\n            text=self.input_value,\n            sender=self.sender,\n            sender_name=self.sender_name,\n            session_id=session_id,\n            context_id=self.context_id,\n            files=files,\n        )\n        if session_id and isinstance(message, Message) and self.should_store_message:\n            stored_message = await self.send_message(\n                message,\n            )\n            self.message.value = stored_message\n            message = stored_message\n\n        self.status = message\n        return message\n"
+              },
+              "context_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Context ID",
+                "dynamic": false,
+                "info": "The context ID of the chat. Adds an extra layer to the local memory.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "context_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "files": {
+                "_input_type": "FileInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Files",
+                "dynamic": false,
+                "fileTypes": [
+                  "csv",
+                  "json",
+                  "pdf",
+                  "txt",
+                  "md",
+                  "mdx",
+                  "yaml",
+                  "yml",
+                  "xml",
+                  "html",
+                  "htm",
+                  "docx",
+                  "py",
+                  "sh",
+                  "sql",
+                  "js",
+                  "ts",
+                  "tsx",
+                  "jpg",
+                  "jpeg",
+                  "png",
+                  "bmp",
+                  "image"
+                ],
+                "file_path": "",
+                "info": "Files to be sent with the message.",
+                "list": true,
+                "list_add_label": "Add More",
+                "name": "files",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "temp_file": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "file",
+                "value": ""
+              },
+              "input_value": {
+                "_input_type": "MultilineInput",
+                "advanced": false,
+                "ai_enabled": false,
+                "api_editable": false,
+                "copy_field": false,
+                "display_name": "Input Text",
+                "dynamic": false,
+                "info": "Message to be passed as input.",
+                "input_types": [],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "multiline": true,
+                "name": "input_value",
+                "override_skip": false,
+                "password": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "sender": {
+                "_input_type": "DropdownInput",
+                "advanced": true,
+                "api_editable": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Sender Type",
+                "dynamic": false,
+                "external_options": {},
+                "info": "Type of sender.",
+                "name": "sender",
+                "options": [
+                  "Machine",
+                  "User"
+                ],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": "User"
+              },
+              "sender_name": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Sender Name",
+                "dynamic": false,
+                "info": "Name of the sender.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "sender_name",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "User"
+              },
+              "session_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Session ID",
+                "dynamic": false,
+                "info": "The session ID of the chat. If empty, the current session ID parameter will be used.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "session_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "should_store_message": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Store Messages",
+                "dynamic": false,
+                "info": "Store the message in the history.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "should_store_message",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              }
+            },
+            "tool_mode": false,
+            "lf_version": "1.12.5"
+          },
+          "showNode": false,
+          "type": "ChatInput",
+          "id": "ChatInput-g4WT9"
+        },
+        "measured": {
+          "width": 192,
+          "height": 52
+        }
+      },
+      {
+        "id": "TaskSprintInstructorControl-1BCri",
+        "type": "genericNode",
+        "position": {
+          "x": 40,
+          "y": 220
+        },
+        "selected": false,
+        "data": {
+          "node": {
+            "template": {
+              "_type": "Component",
+              "api_base": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "api_base",
+                "value": "TASKSPRINT_API_BASE",
+                "display_name": "TaskSprint API base",
+                "advanced": true,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "Bind the Generic global TASKSPRINT_API_BASE (https origin, no path).",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              },
+              "approver_token": {
+                "load_from_db": true,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "approver_token",
+                "value": "TS_APPROVER_TOKEN",
+                "display_name": "Approver token (read plans)",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [],
+                "dynamic": false,
+                "info": "Bind the Credential global TS_APPROVER_TOKEN.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "password": true,
+                "type": "str",
+                "_input_type": "SecretStrInput"
+              },
+              "code": {
+                "type": "code",
+                "required": true,
+                "placeholder": "",
+                "list": false,
+                "show": true,
+                "multiline": true,
+                "value": "# TaskSprint Instructor Control: trusted, deterministic Langflow custom component for TS-90 (Architecture A3,\n# A8, A11, A12; Build Guide 09.1-09.2). NO model, NO Agent, NO tool mode. It parses ONE typed command line:\n#\n#   confirm scope ST-001            instructor   human Product Owner scope confirmation\n#   review plan_<24 hex>            approver     fetch the canonical review snapshot -> Human Input (Approve/Reject)\n#   load fixture faulty|reference   instructor   register a LABELLED instructor fixture candidate\n#   drill enable cand_<24 hex> [m]  instructor   completion_unavailable for the ACTIVE candidate, m minutes (1-30)\n#   drill disable cand_<24 hex>     instructor\n#   stop | resume                   instructor   kill switch for the workspace's agent runs\n#   run evals                       evaluator    Phase 10 (explained here; nothing is called)\n#   reset preview                   instructor   counts and pending work; changes nothing\n#   reset confirm demo-001          instructor   A12 reset of the designated workspace only\n#\n# Anything else is refused with the usage text and no request. Three FIXED clients use three separate\n# Credential globals (TS_APPROVER_TOKEN, TS_INSTRUCTOR_TOKEN, TS_EVALUATOR_TOKEN); the URL is the fixed\n# TASKSPRINT_API_BASE origin. No text can choose a role, a token, a URL, a decision or an \"approved\" flag:\n# for `review`, this component only READS the plan; the decision is the human's click on the native Human\n# Input node, written afterwards by the separate TaskSprint Review Decision adapter against the exact\n# snapshot hash shown here. Outputs: \"Review\" (only for a reviewable plan; feeds Human Input) and\n# \"Result\" (everything else; feeds a Chat Output). The unused output is stopped so its branch never runs.\n# Never place this flow on an MCP server, publish it over A2A, or give it to an agent as a tool.\n# 1.0.1: usage text without angle brackets (the Playground renders messages as Markdown).\n# Version 1.0.1. Source of truth: tasksprint-lab/components/instructor_control.py\nfrom __future__ import annotations\n\nimport json\nimport re\nfrom urllib.parse import urlparse\n\nimport httpx\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import MessageInput, MessageTextInput, Output, SecretStrInput\nfrom lfx.schema.message import Message\n\nADAPTER_VERSION = \"instructor_control/1.0.1\"\nWORKSPACE_RE = re.compile(r\"^[a-z0-9][a-z0-9-]{2,63}$\")\nMAX_LINE = 120\nGRAMMAR = (\n    (\"confirm_scope\", re.compile(r\"^confirm scope (ST-\\d{3})$\", re.I)),\n    (\"review\", re.compile(r\"^review (plan_[0-9a-f]{24})$\", re.I)),\n    (\"load_fixture\", re.compile(r\"^load fixture (faulty|reference)$\", re.I)),\n    (\"drill_enable\", re.compile(r\"^drill enable (cand_[0-9a-f]{24})(?: ([1-9]|[12][0-9]|30))?$\", re.I)),\n    (\"drill_disable\", re.compile(r\"^drill disable (cand_[0-9a-f]{24})$\", re.I)),\n    (\"stop\", re.compile(r\"^stop$\", re.I)),\n    (\"resume\", re.compile(r\"^resume$\", re.I)),\n    (\"run_evals\", re.compile(r\"^run evals$\", re.I)),\n    (\"reset_preview\", re.compile(r\"^reset preview$\", re.I)),\n    (\"reset_confirm\", re.compile(r\"^reset confirm ([a-z0-9][a-z0-9-]{2,63})$\")),\n)\nUSAGE = (\"Accepted commands (one per message): confirm scope ST-001 | review PLAN_ID | load fixture faulty or reference\"\n         \" | drill enable CANDIDATE_ID [minutes] | drill disable CANDIDATE_ID | stop | resume | run evals | reset preview\"\n         \" | reset confirm WORKSPACE. Nothing was sent.\")\nFIXTURES = {\"faulty\": \"faulty_delete\", \"reference\": \"reference_complete\"}\nREF_LINE = \"TS-REVIEW-REF\"\n\n\ndef canonical(value) -> str:\n    return json.dumps(value, sort_keys=True, separators=(\",\", \":\"), ensure_ascii=True)\n\n\ndef parse_command(text: str):\n    line = \" \".join((text or \"\").split())\n    if not line or len(line) > MAX_LINE or \"\\n\" in (text or \"\").strip():\n        return None, ()\n    for name, rx in GRAMMAR:\n        m = rx.match(line)\n        if m:\n            return name, tuple(g for g in m.groups() if g is not None)\n    return None, ()\n\n\ndef review_text(plan: dict) -> str:\n    \"\"\"Human-readable review plus the EXACT canonical snapshot (the adapter re-hashes this JSON).\"\"\"\n    s = plan[\"review_snapshot\"]\n    t, cur = s[\"target\"], s[\"current\"]\n    ev = s[\"application_test_evidence\"]\n    lines = [\n        f\"HUMAN REVIEW REQUIRED - {s['operation'].upper()} plan {s['plan_id']} for {s['environment']} \"\n        f\"(workspace {s['workspace_id']})\",\n        f\"Target: {t['candidate_id']} sha256 {t['sha256']} (origin {t['origin']}, label {t['label']})\",\n        f\"Current active: {cur['candidate_id']} sha256 {cur['sha256']}; expected release revision \"\n        f\"{s['expected_release_revision']}\",\n        \"Application tests: \" + (\"none (rollback uses the baseline smoke suite)\" if ev is None else\n                                 f\"{ev['test_run_id']} {ev['outcome']} (suite {ev['suite_sha256'][:16]}...)\"),\n        f\"Agent-system manifest: {s['agent_baseline_manifest']['status']}\",\n        f\"Rollback target: {s['rollback_target']['sha256']} (baseline evidence \"\n        f\"{s['rollback_target']['baseline_evidence_id']})\",\n        f\"Plan expires: {s['plan_expires_at']}\",\n        f\"plan_sha256: {s['plan_sha256']}\",\n        f\"snapshot_sha256: {plan['snapshot_sha256']}\",\n        s[\"consent_scope\"],\n        \"Approve or Reject below. Typed chat is not a decision, and neither choice executes anything.\",\n        \"\",\n        \"Exact snapshot (canonical JSON; the decision is bound to its SHA-256):\",\n        \"```json\",\n        canonical(s),\n        \"```\",\n        f\"{REF_LINE} plan_id={s['plan_id']} plan_sha256={s['plan_sha256']} snapshot_sha256={plan['snapshot_sha256']}\",\n    ]\n    return \"\\n\".join(lines)\n\n\nclass TaskSprintInstructorControl(Component):\n    display_name = \"TaskSprint Instructor Control\"\n    description = (\"Trusted human-only control (TS-90): typed command parser with fixed approver, instructor and \"\n                   \"evaluator clients. No model. Review output feeds Human Input; Result feeds Chat Output.\")\n    icon = \"shield-check\"\n    name = \"TaskSprintInstructorControl\"\n\n    inputs = [\n        MessageInput(name=\"input_value\", display_name=\"Command\", required=True),\n        MessageTextInput(name=\"api_base\", display_name=\"TaskSprint API base\", value=\"TASKSPRINT_API_BASE\",\n                         load_from_db=True, advanced=True,\n                         info=\"Bind the Generic global TASKSPRINT_API_BASE (https origin, no path).\"),\n        SecretStrInput(name=\"approver_token\", display_name=\"Approver token (read plans)\", value=\"\",\n                       load_from_db=True, info=\"Bind the Credential global TS_APPROVER_TOKEN.\"),\n        SecretStrInput(name=\"instructor_token\", display_name=\"Instructor token\", value=\"\", load_from_db=True,\n                       info=\"Bind the Credential global TS_INSTRUCTOR_TOKEN.\"),\n        SecretStrInput(name=\"evaluator_token\", display_name=\"Evaluator token\", value=\"\", load_from_db=True,\n                       info=\"Bind the Credential global TS_EVALUATOR_TOKEN (Phase 10 harness only).\"),\n        MessageTextInput(name=\"workspace\", display_name=\"Workspace\", value=\"demo-001\", advanced=True),\n    ]\n    outputs = [\n        Output(display_name=\"Review\", name=\"review\", method=\"review_output\", group_outputs=True),\n        Output(display_name=\"Result\", name=\"result\", method=\"result_output\", group_outputs=True),\n    ]\n\n    # ------------------------------------------------------------------ fixed clients\n    def _base(self) -> str:\n        base = (self.api_base or \"\").strip().rstrip(\"/\")\n        u = urlparse(base)\n        if u.scheme != \"https\" or not u.hostname or u.path or u.query or u.fragment or u.username:\n            raise ValueError(\"TASKSPRINT_API_BASE must be an https origin without a path\")\n        return base\n\n    def _ws(self) -> str:\n        ws = (self.workspace or \"\").strip()\n        if not WORKSPACE_RE.match(ws):\n            raise ValueError(\"workspace id is invalid\")\n        return ws\n\n    def _call(self, method: str, path: str, token: str, body: dict | None = None) -> tuple[int, dict]:\n        if len(token or \"\") < 32:\n            return 0, {\"error\": {\"code\": \"CREDENTIAL_NOT_BOUND\", \"message\": \"the Credential global is not bound\"}}\n        try:\n            resp = httpx.request(method, self._base() + path, json=body, timeout=30.0, follow_redirects=False,\n                                 headers={\"Authorization\": f\"Bearer {token}\", \"X-TaskSprint-Workspace\": self._ws(),\n                                          \"User-Agent\": ADAPTER_VERSION})\n        except httpx.HTTPError as err:\n            return 0, {\"error\": {\"code\": \"LAB_UNREACHABLE\", \"message\": type(err).__name__}}\n        try:\n            return resp.status_code, resp.json()\n        except ValueError:\n            return resp.status_code, {\"error\": {\"code\": f\"HTTP_{resp.status_code}\", \"message\": \"non-JSON reply\"}}\n\n    def _instructor(self, action: str, **fields) -> tuple[int, dict]:\n        return self._call(\"POST\", \"/v1/instructor/actions\", self.instructor_token,\n                          {\"action\": action, \"workspace_id\": self._ws(), **fields})\n\n    # ------------------------------------------------------------------ one parse + one request per run\n    def _outcome(self) -> dict:\n        cached = getattr(self, \"_ts_outcome\", None)\n        if cached is not None:\n            return cached\n        raw = self.input_value.text if isinstance(self.input_value, Message) else str(self.input_value or \"\")\n        cmd, args = parse_command(raw)\n        out: dict\n        if cmd is None:\n            out = {\"kind\": \"result\", \"command\": None, \"text\": \"REFUSED: unknown command. \" + USAGE}\n        elif cmd == \"review\":\n            code, body = self._call(\"GET\", f\"/v1/release-plans/{args[0]}\", self.approver_token)\n            if code != 200:\n                out = self._error(cmd, code, body)\n            elif body.get(\"decision\"):\n                d = body[\"decision\"]\n                out = {\"kind\": \"result\", \"command\": cmd, \"text\": (\n                    f\"Plan {args[0]} already has a recorded human decision: {d['decision'].upper()} \"\n                    f\"{d['approval_id']} at {d['created_at']} (status {d['status']}, snapshot \"\n                    f\"{d['snapshot_sha256'][:16]}..., expires {d['expires_at']}). Plan state {body['state']}. \"\n                    \"No new review was opened; nothing was executed.\")}\n            elif body.get(\"effective_state\") != \"AWAITING_APPROVAL\":\n                out = {\"kind\": \"result\", \"command\": cmd, \"text\": (\n                    f\"Plan {args[0]} is {body.get('effective_state')} and cannot be reviewed. Ask Operations for a \"\n                    \"new plan; nothing was recorded.\")}\n            else:\n                out = {\"kind\": \"review\", \"command\": cmd, \"text\": review_text(body),\n                       \"plan_id\": args[0], \"snapshot_sha256\": body[\"snapshot_sha256\"]}\n        elif cmd == \"run_evals\":\n            bound = len(self.evaluator_token or \"\") >= 32\n            out = {\"kind\": \"result\", \"command\": cmd, \"text\": (\n                \"Agent evaluations are Phase 10: the trusted harness (scripts/run_agent_evals.py) runs the eight \"\n                \"cases x3 against the real flows and records its report with the evaluator credential. Nothing was \"\n                f\"run now. Evaluator credential bound: {'yes' if bound else 'no'} (never shown).\")}\n        else:\n            if cmd == \"confirm_scope\":\n                code, body = self._instructor(\"confirm_scope\", story_id=args[0].upper())\n            elif cmd == \"load_fixture\":\n                code, body = self._instructor(\"load_fixture\", fixture=FIXTURES[args[0].lower()])\n            elif cmd == \"drill_enable\":\n                extra = {\"ttl_minutes\": int(args[1])} if len(args) > 1 else {}\n                code, body = self._instructor(\"drill_enable\", fault_type=\"completion_unavailable\",\n                                              candidate_id=args[0].lower(), **extra)\n            elif cmd == \"drill_disable\":\n                code, body = self._instructor(\"drill_disable\", fault_type=\"completion_unavailable\",\n                                              candidate_id=args[0].lower())\n            elif cmd == \"stop\":\n                code, body = self._instructor(\"stop\", reason=\"TS-90 instructor stop\")\n            elif cmd == \"resume\":\n                code, body = self._instructor(\"resume\")\n            elif cmd == \"reset_preview\":\n                code, body = self._instructor(\"reset_preview\")\n            else:  # reset_confirm\n                if args[0] != self._ws():\n                    out = {\"kind\": \"result\", \"command\": cmd, \"text\": (\n                        f\"REFUSED: reset confirm must name this console's workspace ({self._ws()}). Nothing was sent.\")}\n                    self._ts_outcome = out\n                    return out\n                code, body = self._instructor(\"reset_confirm\", confirm=args[0])\n            out = self._error(cmd, code, body) if code != 200 else {\n                \"kind\": \"result\", \"command\": cmd, \"text\": self._summary(cmd, body)}\n        self._ts_outcome = out\n        self.status = {\"command\": out[\"command\"], \"kind\": out[\"kind\"]}\n        return out\n\n    @staticmethod\n    def _error(cmd: str, code: int, body: dict) -> dict:\n        e = body.get(\"error\") or {}\n        return {\"kind\": \"result\", \"command\": cmd, \"text\": (\n            f\"NOT DONE ({cmd}): {e.get('code', 'HTTP_' + str(code))} - {e.get('message', '')} \"\n            f\"[request {e.get('request_id', '-')}]\")}\n\n    @staticmethod\n    def _summary(cmd: str, b: dict) -> str:\n        if cmd == \"confirm_scope\":\n            st = b[\"story\"]\n            return (f\"Scope confirmed for {st['story_id']} (criteria v{st['criteria_version']}, revision \"\n                    f\"{st['revision']}, stage {st['stage']}). {b.get('note', '')}\")\n        if cmd == \"load_fixture\":\n            c = b[\"candidate\"]\n            return (f\"Fixture loaded ({b['fixture']}): {c['candidate_id']} sha256 {c['sha256']} origin {c['origin']} \"\n                    f\"label '{c['label']}' (created {b['created']}). Labelled instructor fixture, not live coding.\")\n        if cmd == \"drill_enable\":\n            return (f\"Drill {b['drill_id']} completion_unavailable ON for {b['candidate_id']} until {b['expires_at']} \"\n                    f\"(created {b['created']}); app health {b['app_health']}. {b['note']}\")\n        if cmd == \"drill_disable\":\n            return f\"Drill OFF for {b['candidate_id']} ({b['disabled']} disabled); app health {b['app_health']}.\"\n        if cmd in (\"stop\", \"resume\"):\n            return (f\"{cmd.upper()}: stopped={b['stopped']} (was {b['was_stopped']}); cancelled runs \"\n                    f\"{len(b['cancelled_runs'])}; event {b['event_id']}. {b['note']}\")\n        if cmd == \"reset_preview\":\n            p = b.get(\"pending\") or {}\n            return (f\"Reset preview for {b['workspace_id']} (generation {b.get('generation')}): counts \"\n                    f\"{json.dumps(b.get('counts'), sort_keys=True)}; pending runs {len(p.get('active_runs', []))}, \"\n                    f\"plans {p.get('open_plans', [])}, approvals {p.get('active_approvals', [])}, drills \"\n                    f\"{len(p.get('enabled_drills', []))}. Would: {'; '.join(b.get('would_do', []))}. Nothing changed. \"\n                    f\"To apply: reset confirm {b['workspace_id']}\")\n        if cmd == \"reset_confirm\":\n            return (f\"Reset done: {b['workspace_id']} generation {b['generation']}; evidence export \"\n                    f\"{b['export']['export_id']} sha256 {b['export']['export_sha256']}; cancelled plans \"\n                    f\"{b['cancelled']['open_plans']}, approvals {b['cancelled']['active_approvals']}; restored v0 \"\n                    f\"release {b['restored_v0_release_id']}; tasks {b['tasks_seeded']}; event {b['event_id']}.\")\n        return json.dumps(b, sort_keys=True)[:1500]\n\n    # ------------------------------------------------------------------ outputs\n    def review_output(self) -> Message:\n        out = self._outcome()\n        if out[\"kind\"] != \"review\":\n            self.stop(\"review\")\n            return Message(text=\"\")\n        return Message(text=out[\"text\"])\n\n    def result_output(self) -> Message:\n        out = self._outcome()\n        if out[\"kind\"] == \"review\":\n            self.stop(\"result\")\n            return Message(text=\"\")\n        return Message(text=out[\"text\"])\n",
+                "fileTypes": [],
+                "file_path": "",
+                "password": false,
+                "name": "code",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "info": "",
+                "load_from_db": false,
+                "title_case": false
+              },
+              "evaluator_token": {
+                "load_from_db": true,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "evaluator_token",
+                "value": "TS_EVALUATOR_TOKEN",
+                "display_name": "Evaluator token",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [],
+                "dynamic": false,
+                "info": "Bind the Credential global TS_EVALUATOR_TOKEN (Phase 10 harness only).",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "password": true,
+                "type": "str",
+                "_input_type": "SecretStrInput"
+              },
+              "input_value": {
+                "trace_as_input": true,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": true,
+                "placeholder": "",
+                "show": true,
+                "name": "input_value",
+                "value": "",
+                "display_name": "Command",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageInput"
+              },
+              "instructor_token": {
+                "load_from_db": true,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "instructor_token",
+                "value": "TS_INSTRUCTOR_TOKEN",
+                "display_name": "Instructor token",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [],
+                "dynamic": false,
+                "info": "Bind the Credential global TS_INSTRUCTOR_TOKEN.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "password": true,
+                "type": "str",
+                "_input_type": "SecretStrInput"
+              },
+              "workspace": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "workspace",
+                "value": "demo-001",
+                "display_name": "Workspace",
+                "advanced": true,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              }
+            },
+            "description": "Trusted human-only control (TS-90): typed command parser with fixed approver, instructor and evaluator clients. No model. Review output feeds Human Input; Result feeds Chat Output.",
+            "icon": "shield-check",
+            "base_classes": [
+              "Message"
+            ],
+            "display_name": "TaskSprint Instructor Control",
+            "documentation": "",
+            "minimized": false,
+            "custom_fields": {},
+            "output_types": [],
+            "pinned": false,
+            "conditional_paths": [],
+            "frozen": false,
+            "outputs": [
+              {
+                "types": [
+                  "Message"
+                ],
+                "selected": "Message",
+                "name": "review",
+                "hidden": null,
+                "display_name": "Review",
+                "method": "review_output",
+                "value": "__UNDEFINED__",
+                "cache": true,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": true,
+                "options": null,
+                "tool_mode": true
+              },
+              {
+                "types": [
+                  "Message"
+                ],
+                "selected": "Message",
+                "name": "result",
+                "hidden": null,
+                "display_name": "Result",
+                "method": "result_output",
+                "value": "__UNDEFINED__",
+                "cache": true,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": true,
+                "options": null,
+                "tool_mode": true
+              }
+            ],
+            "field_order": [
+              "input_value",
+              "api_base",
+              "approver_token",
+              "instructor_token",
+              "evaluator_token",
+              "workspace"
+            ],
+            "beta": false,
+            "legacy": false,
+            "edited": false,
+            "metadata": {
+              "module": "custom_components.tasksprint_instructor_control",
+              "code_hash": "25ade2769046",
+              "dependencies": {
+                "total_dependencies": 2,
+                "dependencies": [
+                  {
+                    "name": "httpx",
+                    "version": "0.28.1"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": "1.12.5"
+                  }
+                ]
+              }
+            },
+            "tool_mode": false
+          },
+          "showNode": true,
+          "type": "TaskSprintInstructorControl",
+          "id": "TaskSprintInstructorControl-1BCri"
+        },
+        "measured": {
+          "width": 320,
+          "height": 545
+        }
+      },
+      {
+        "id": "HumanInput-sUEGT",
+        "type": "genericNode",
+        "position": {
+          "x": 480,
+          "y": 40
+        },
+        "selected": false,
+        "data": {
+          "node": {
+            "base_classes": [
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Pause the flow for a human-in-the-loop (HITL) decision and route on the chosen action.",
+            "display_name": "Human Input",
+            "documentation": "",
+            "edited": false,
+            "field_order": [
+              "prompt",
+              "decisions",
+              "timeout",
+              "enable_fallback"
+            ],
+            "frozen": false,
+            "icon": "HumanInput",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "63cbbf99823f",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 1
+              },
+              "keywords": [
+                "hitl",
+                "human-in-the-loop",
+                "decision"
+              ],
+              "module": "lfx.components.flow_controls.human_input.HumanInput"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "types": [
+                  "Message"
+                ],
+                "selected": "Message",
+                "name": "branch_approve",
+                "display_name": "Approve",
+                "method": "route_branch",
+                "value": "__UNDEFINED__",
+                "cache": true,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": true,
+                "options": null,
+                "tool_mode": true
+              },
+              {
+                "types": [
+                  "Message"
+                ],
+                "selected": "Message",
+                "name": "branch_reject",
+                "display_name": "Reject",
+                "method": "route_branch",
+                "value": "__UNDEFINED__",
+                "cache": true,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": true,
+                "options": null,
+                "tool_mode": true
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "\"\"\"Human Input node: pause a flow for a human decision, then route on the pick (LE-1449).\n\nThe User Choices picker chooses which actions the human can take (presets like\nApprove/Reject/Escalate, or custom); each becomes a branch output. On first execution\nthe node requests a pause carrying a ``node_input`` request; on resume the injected\ndecision selects exactly one branch (the others are stopped). With Enable Fallback on,\na ``fallback`` branch is added for when no user action is answered (e.g. after timeout).\n\"\"\"\n\nfrom __future__ import annotations\n\nfrom datetime import datetime, timezone\nfrom typing import Any\n\nfrom lfx.custom import Component\nfrom lfx.inputs.inputs import ActionPickerInput, BoolInput, DurationInput\nfrom lfx.io import MultilineInput, Output\nfrom lfx.schema.message import Message\n\nHUMAN_INPUT_REQUIRED = \"human_input_required\"\n_KIND_NODE_INPUT = \"node_input\"\n_FALLBACK_ACTION = \"fallback\"\n_UNIT_SECONDS = {\"Minutes\": 60, \"Hours\": 3600, \"Days\": 86400}\n\n\ndef _action_id(label: str) -> str:\n    \"\"\"Stable branch id for a human-facing action label (e.g. 'Request Changes' -> 'request_changes').\"\"\"\n    return str(label).strip().lower().replace(\" \", \"_\")\n\n\nclass HumanInput(Component):\n    display_name = \"Human Input\"\n    description = \"Pause the flow for a human-in-the-loop (HITL) decision and route on the chosen action.\"\n    icon = \"HumanInput\"\n    name = \"HumanInput\"\n    metadata = {\"keywords\": [\"hitl\", \"human-in-the-loop\", \"decision\"]}\n\n    inputs = [\n        MultilineInput(\n            name=\"prompt\",\n            display_name=\"Input\",\n            info=\"Content shown to the human for review.\",\n            value=\"\",\n        ),\n        ActionPickerInput(\n            name=\"decisions\",\n            display_name=\"User Choices\",\n            info=\"Choices the human can pick; each becomes a branch output. Pick from the list or type a custom one.\",\n            value=[\"Approve\", \"Reject\"],\n            real_time_refresh=True,\n            required=True,\n        ),\n        DurationInput(\n            name=\"timeout\",\n            display_name=\"Timeout\",\n            info=\"A response received after this window is rerouted to the fallback path (when enabled) \"\n            \"instead of the chosen action. The run stays paused until a response arrives or the \"\n            \"server's suspended-run deadline expires it. Set to 0 to wait indefinitely.\",\n            options=[\"Minutes\", \"Hours\", \"Days\"],\n            value={\"value\": 3, \"unit\": \"Days\"},\n            advanced=True,\n            show=False,\n        ),\n        BoolInput(\n            name=\"enable_fallback\",\n            display_name=\"Enable Fallback\",\n            info=\"Add a 'fallback' output taken when the answer arrives after the timeout window.\",\n            value=False,\n            advanced=True,\n            real_time_refresh=True,\n        ),\n    ]\n\n    # Default branch outputs mirror the default ``decisions`` so a freshly dragged\n    # node shows handles immediately (update_outputs only fires on a field change).\n    outputs: list[Output] = [\n        Output(display_name=\"Approve\", name=\"branch_approve\", method=\"route_branch\", group_outputs=True),\n        Output(display_name=\"Reject\", name=\"branch_reject\", method=\"route_branch\", group_outputs=True),\n    ]\n\n    async def update_frontend_node(self, new_frontend_node: dict, current_frontend_node: dict) -> dict:\n        \"\"\"Rebuild branch outputs from the saved User Choices so loaded/refreshed flows keep their handles.\"\"\"\n        new_frontend_node = await super().update_frontend_node(new_frontend_node, current_frontend_node)\n        template = new_frontend_node.get(\"template\", {})\n        decisions = (template.get(\"decisions\") or {}).get(\"value\")\n        self.update_outputs(new_frontend_node, \"decisions\", decisions if decisions is not None else [])\n        self._sync_timeout_visibility(template)\n        return new_frontend_node\n\n    @staticmethod\n    def _sync_timeout_visibility(template: dict) -> None:\n        \"\"\"Timeout only matters when the fallback branch exists to reroute to.\"\"\"\n        if \"timeout\" in template:\n            template[\"timeout\"][\"show\"] = bool((template.get(\"enable_fallback\") or {}).get(\"value\"))\n\n    def update_build_config(self, build_config: dict, field_value: Any, field_name: str | None = None) -> dict:\n        if field_name == \"enable_fallback\" and \"timeout\" in build_config:\n            build_config[\"timeout\"][\"show\"] = bool(field_value)\n        return build_config\n\n    def update_outputs(self, frontend_node: dict, field_name: str, field_value: Any) -> dict:\n        \"\"\"One branch output per selected action (+ optional fallback) + a stable action output.\"\"\"\n        if field_name not in (\"decisions\", \"enable_fallback\"):\n            return frontend_node\n        template = frontend_node.get(\"template\", {})\n\n        def _other(field: str, attr_default):\n            if field in template:\n                return (template.get(field) or {}).get(\"value\")\n            return getattr(self, attr_default[0], attr_default[1])\n\n        actions = field_value if field_name == \"decisions\" else _other(\"decisions\", (\"decisions\", []))\n        fallback_on = (\n            field_value if field_name == \"enable_fallback\" else _other(\"enable_fallback\", (\"enable_fallback\", False))\n        )\n        outputs: list[Output] = []\n        seen: set[str] = set()\n        for label in actions or []:\n            action_id = _action_id(label)\n            if not action_id or action_id in seen:\n                continue\n            seen.add(action_id)\n            outputs.append(\n                Output(\n                    display_name=str(label).strip(),\n                    name=f\"branch_{action_id}\",\n                    method=\"route_branch\",\n                    group_outputs=True,\n                )\n            )\n        if fallback_on:\n            outputs.append(\n                Output(\n                    display_name=\"Fallback\",\n                    name=f\"branch_{_FALLBACK_ACTION}\",\n                    method=\"route_branch\",\n                    group_outputs=True,\n                )\n            )\n        frontend_node[\"outputs\"] = outputs\n        return frontend_node\n\n    def _actions(self) -> list[tuple[str, str]]:\n        \"\"\"Selected actions as (action_id, label) pairs, de-duplicated by id.\"\"\"\n        seen: set[str] = set()\n        actions: list[tuple[str, str]] = []\n        for label in getattr(self, \"decisions\", []) or []:\n            action_id = _action_id(label)\n            if not action_id or action_id in seen:\n                continue\n            seen.add(action_id)\n            actions.append((action_id, str(label).strip()))\n        return actions\n\n    def _rendered_prompt(self) -> str:\n        return str(getattr(self, \"prompt\", \"\") or \"\")\n\n    def _timeout_seconds(self) -> int:\n        timeout = getattr(self, \"timeout\", None) or {}\n        if not isinstance(timeout, dict):\n            return 0\n        unit = timeout.get(\"unit\", \"Days\") or \"Days\"\n        return int(timeout.get(\"value\", 0) or 0) * _UNIT_SECONDS.get(unit, _UNIT_SECONDS[\"Days\"])\n\n    def _request_id(self) -> str:\n        run_id = str(getattr(self.graph, \"run_id\", \"\") or \"\")\n        return f\"{self._id}:{run_id}\"\n\n    def _injected_decision(self) -> dict | None:\n        decisions = getattr(self.graph, \"human_input_decisions\", None) if self.graph is not None else None\n        if not isinstance(decisions, dict):\n            return None\n        return decisions.get(self._request_id())\n\n    def _allowed_decisions(self) -> list[str]:\n        ids = [action_id for action_id, _ in self._actions()]\n        if getattr(self, \"enable_fallback\", False):\n            ids.append(_FALLBACK_ACTION)\n        return ids\n\n    def _pause_request(self) -> dict[str, Any]:\n        return {\n            \"request_id\": self._request_id(),\n            \"kind\": _KIND_NODE_INPUT,\n            \"prompt\": self._rendered_prompt(),\n            \"options\": [{\"action_id\": action_id, \"label\": label} for action_id, label in self._actions()],\n            \"allowed_decisions\": self._allowed_decisions(),\n            \"timeout_seconds\": self._timeout_seconds(),\n            \"fallback_action\": _FALLBACK_ACTION if getattr(self, \"enable_fallback\", False) else None,\n            \"paused_at\": datetime.now(timezone.utc).isoformat(),\n        }\n\n    def _has_downstream_consumer(self) -> bool:\n        \"\"\"True if any branch output feeds a downstream node.\n\n        A node with no outgoing edges runs as an isolated start vertex; pausing it would\n        suspend the whole run for a decision that routes nowhere (and, alongside an Agent's\n        own tool-approval pause, leave that pause unresolved on resume). The successor_map is\n        absent only outside a prepared graph (standalone/tests), where the old behavior holds.\n        \"\"\"\n        graph = getattr(self, \"graph\", None)\n        successor_map = getattr(graph, \"successor_map\", None)\n        if not isinstance(successor_map, dict):\n            return True\n        return bool(successor_map.get(self._id))\n\n    def _suspend(self) -> None:\n        self.graph.request_pause(reason=HUMAN_INPUT_REQUIRED, data=self._pause_request())\n        self.status = \"Awaiting human input\"\n\n    def route_branch(self) -> Message:\n        decision = self._injected_decision()\n        if decision is None:\n            if not self._has_downstream_consumer():\n                self.status = \"Skipped: no connected outputs\"\n                return Message(text=self._rendered_prompt())\n            self._suspend()\n            return Message(text=\"\")\n        chosen = decision.get(\"action_id\")\n        non_chosen = [action_id for action_id in self._allowed_decisions() if action_id != chosen]\n        for action_id in non_chosen:\n            self.stop(f\"branch_{action_id}\")\n        return Message(text=self._rendered_prompt())\n"
+              },
+              "decisions": {
+                "_input_type": "ActionPickerInput",
+                "advanced": false,
+                "api_editable": false,
+                "combobox": true,
+                "display_name": "User Choices",
+                "dynamic": false,
+                "info": "Choices the human can pick; each becomes a branch output. Pick from the list or type a custom one.",
+                "list": true,
+                "list_add_label": "Add More",
+                "name": "decisions",
+                "options": [],
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "actionPicker",
+                "value": [
+                  "Approve",
+                  "Reject"
+                ]
+              },
+              "enable_fallback": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Enable Fallback",
+                "dynamic": false,
+                "info": "Add a 'fallback' output taken when the answer arrives after the timeout window.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "enable_fallback",
+                "override_skip": false,
+                "placeholder": "",
+                "real_time_refresh": true,
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": false
+              },
+              "prompt": {
+                "_input_type": "MultilineInput",
+                "advanced": false,
+                "ai_enabled": false,
+                "api_editable": false,
+                "copy_field": false,
+                "display_name": "Input",
+                "dynamic": false,
+                "info": "Content shown to the human for review.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "multiline": true,
+                "name": "prompt",
+                "override_skip": false,
+                "password": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "timeout": {
+                "_input_type": "DurationInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Timeout",
+                "dynamic": false,
+                "info": "A response received after this window is rerouted to the fallback path (when enabled) instead of the chosen action. The run stays paused until a response arrives or the server's suspended-run deadline expires it. Set to 0 to wait indefinitely.",
+                "name": "timeout",
+                "options": [
+                  "Minutes",
+                  "Hours",
+                  "Days"
+                ],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": false,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "duration",
+                "value": {
+                  "unit": "Days",
+                  "value": 3
+                }
+              },
+              "_frontend_node_flow_id": {
+                "value": "cda48ae0-d8bb-44bc-a422-91f9576fba43"
+              },
+              "_frontend_node_folder_id": {
+                "value": "9c4defb4-3457-4e34-9668-b940fadb030f"
+              },
+              "is_refresh": false
+            },
+            "tool_mode": false,
+            "last_updated": "2026-10-20T14:26:02.679Z"
+          },
+          "showNode": true,
+          "type": "HumanInput",
+          "id": "HumanInput-sUEGT"
+        },
+        "measured": {
+          "width": 320,
+          "height": 343
+        }
+      },
+      {
+        "id": "TaskSprintReviewDecision-3s1BH",
+        "type": "genericNode",
+        "position": {
+          "x": 900,
+          "y": -120
+        },
+        "selected": false,
+        "data": {
+          "node": {
+            "template": {
+              "_type": "Component",
+              "api_base": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "api_base",
+                "value": "TASKSPRINT_API_BASE",
+                "display_name": "TaskSprint API base",
+                "advanced": true,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              },
+              "approver_token": {
+                "load_from_db": true,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "approver_token",
+                "value": "TS_APPROVER_TOKEN",
+                "display_name": "Approver token",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [],
+                "dynamic": false,
+                "info": "Bind the Credential global TS_APPROVER_TOKEN.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "password": true,
+                "type": "str",
+                "_input_type": "SecretStrInput"
+              },
+              "code": {
+                "type": "code",
+                "required": true,
+                "placeholder": "",
+                "list": false,
+                "show": true,
+                "multiline": true,
+                "value": "# TaskSprint Review Decision: trusted post-decision adapter for TS-90 (Architecture A11; Build Guide 09.2).\n# Wired to ONE branch of the native Human Input node (one instance on \"Approve\", one on \"Reject\"). Its\n# decision is the fixed node setting \"Decision\" (approve | reject), chosen when the flow is built, never\n# parsed from text: the human's click selects which branch (and therefore which instance) runs at all.\n#\n# Across the Human Input pause it receives back the exact review text that TaskSprint Instructor Control\n# produced (Human Input returns its prompt on the chosen branch). It extracts the canonical snapshot JSON,\n# re-hashes it, requires that hash to equal the reference line AND the snapshot hash the backend computes\n# for that plan now, then records ONE decision with the human-approver credential:\n#     POST /v1/approvals {plan_id, plan_sha256, snapshot_sha256, decision, display_name?, hitl_request_id}\n# The backend re-verifies everything (exact hashes, AWAITING_APPROVAL, expiry, one decision per plan).\n# It never executes anything and never sends an \"approved\" flag. \"Reviewer name\" is a label only.\n# Version 1.0.0. Source of truth: tasksprint-lab/components/review_decision.py\nfrom __future__ import annotations\n\nimport hashlib\nimport json\nimport re\nfrom urllib.parse import urlparse\n\nimport httpx\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DropdownInput, MessageInput, MessageTextInput, Output, SecretStrInput\nfrom lfx.schema.message import Message\n\nADAPTER_VERSION = \"review_decision/1.0.0\"\nWORKSPACE_RE = re.compile(r\"^[a-z0-9][a-z0-9-]{2,63}$\")\nNAME_RE = re.compile(r\"^[^\\x00-\\x1f\\x7f]{1,64}$\")\nREF_RE = re.compile(r\"^TS-REVIEW-REF plan_id=(plan_[0-9a-f]{24}) plan_sha256=([0-9a-f]{64}) \"\n                    r\"snapshot_sha256=([0-9a-f]{64})$\", re.M)\nBLOCK_RE = re.compile(r\"^```json\\n(\\{.*\\})\\n```$\", re.M)\n\n\ndef canonical(value) -> str:\n    return json.dumps(value, sort_keys=True, separators=(\",\", \":\"), ensure_ascii=True)\n\n\ndef extract(text: str) -> tuple[dict, str, str, str]:\n    \"\"\"(snapshot, plan_id, plan_sha256, snapshot_sha256) from the reviewed text; raise if not exact.\"\"\"\n    refs, blocks = REF_RE.findall(text or \"\"), BLOCK_RE.findall(text or \"\")\n    if len(refs) != 1 or len(blocks) != 1:\n        raise ValueError(\"the reviewed text does not carry exactly one snapshot and one reference line\")\n    plan_id, plan_sha, snap_sha = refs[0]\n    snapshot = json.loads(blocks[0])\n    if canonical(snapshot) != blocks[0]:\n        raise ValueError(\"the carried snapshot is not in canonical form\")\n    if hashlib.sha256(blocks[0].encode(\"ascii\")).hexdigest() != snap_sha:\n        raise ValueError(\"the carried snapshot does not hash to the referenced snapshot_sha256\")\n    if snapshot.get(\"plan_id\") != plan_id or snapshot.get(\"plan_sha256\") != plan_sha:\n        raise ValueError(\"the reference line does not match the carried snapshot\")\n    return snapshot, plan_id, plan_sha, snap_sha\n\n\nclass TaskSprintReviewDecision(Component):\n    display_name = \"TaskSprint Review Decision\"\n    description = (\"Trusted adapter after Human Input: records the fixed decision of this branch against the exact \"\n                   \"reviewed snapshot hash (POST /v1/approvals). Never executes a release.\")\n    icon = \"gavel\"\n    name = \"TaskSprintReviewDecision\"\n\n    inputs = [\n        MessageInput(name=\"reviewed\", display_name=\"Reviewed snapshot (Human Input branch)\", required=True),\n        DropdownInput(name=\"decision\", display_name=\"Decision (fixed for this branch)\", options=[\"approve\", \"reject\"],\n                      value=\"reject\", info=\"Set once when building the flow: approve on the Approve branch, reject \"\n                                           \"on the Reject branch. Never derived from text.\"),\n        MessageTextInput(name=\"reviewer_label\", display_name=\"Reviewer name (label only)\", value=\"\", advanced=True,\n                         info=\"Stored with the record; confers no authority.\"),\n        MessageTextInput(name=\"api_base\", display_name=\"TaskSprint API base\", value=\"TASKSPRINT_API_BASE\",\n                         load_from_db=True, advanced=True),\n        SecretStrInput(name=\"approver_token\", display_name=\"Approver token\", value=\"\", load_from_db=True,\n                       info=\"Bind the Credential global TS_APPROVER_TOKEN.\"),\n        MessageTextInput(name=\"workspace\", display_name=\"Workspace\", value=\"demo-001\", advanced=True),\n    ]\n    outputs = [Output(display_name=\"Decision record\", name=\"record\", method=\"record_decision\")]\n\n    def _hitl_request_id(self) -> str | None:\n        graph = getattr(self, \"graph\", None)\n        run_id = str(getattr(graph, \"run_id\", \"\") or \"\")\n        ids = [v.id for v in getattr(graph, \"vertices\", []) or [] if str(v.id).startswith(\"HumanInput-\")]\n        if len(ids) == 1 and run_id:\n            rid = f\"{ids[0]}:{run_id}\"\n            return rid if re.match(r\"^[A-Za-z0-9_.:\\-]{1,160}$\", rid) else None\n        return None\n\n    def record_decision(self) -> Message:\n        decision = self.decision if self.decision in (\"approve\", \"reject\") else None\n        if decision is None:\n            raise ValueError(\"Decision must be configured as approve or reject\")\n        base = (self.api_base or \"\").strip().rstrip(\"/\")\n        u = urlparse(base)\n        if u.scheme != \"https\" or not u.hostname or u.path or u.query or u.fragment or u.username:\n            raise ValueError(\"TASKSPRINT_API_BASE must be an https origin without a path\")\n        ws = (self.workspace or \"\").strip()\n        if not WORKSPACE_RE.match(ws):\n            raise ValueError(\"workspace id is invalid\")\n        token = self.approver_token or \"\"\n        if len(token) < 32:\n            raise ValueError(\"approver token is not bound (Credential global TS_APPROVER_TOKEN missing)\")\n        text = self.reviewed.text if isinstance(self.reviewed, Message) else str(self.reviewed or \"\")\n        try:\n            _snap, plan_id, plan_sha, snap_sha = extract(text)\n        except (ValueError, json.JSONDecodeError) as err:\n            self.status = {\"recorded\": False, \"reason\": \"snapshot\"}\n            return Message(text=f\"NOT RECORDED: {err}. Nothing was recorded or executed; run review again.\")\n        headers = {\"Authorization\": f\"Bearer {token}\", \"X-TaskSprint-Workspace\": ws, \"User-Agent\": ADAPTER_VERSION}\n        live = httpx.get(f\"{base}/v1/release-plans/{plan_id}\", headers=headers, timeout=30.0, follow_redirects=False)\n        lb = live.json() if live.headers.get(\"content-type\", \"\").startswith(\"application/json\") else {}\n        if live.status_code != 200 or lb.get(\"snapshot_sha256\") != snap_sha:\n            code = (lb.get(\"error\") or {}).get(\"code\") or (\"SNAPSHOT_CHANGED\" if live.status_code == 200 else\n                                                           f\"HTTP_{live.status_code}\")\n            self.status = {\"recorded\": False, \"reason\": code}\n            return Message(text=f\"NOT RECORDED: {code}. The backend no longer serves this exact snapshot for \"\n                                f\"{plan_id}; nothing was recorded or executed. Run review {plan_id} again.\")\n        body = {\"plan_id\": plan_id, \"plan_sha256\": plan_sha, \"snapshot_sha256\": snap_sha, \"decision\": decision}\n        label = \" \".join(str(self.reviewer_label or \"\").split())\n        if label and NAME_RE.match(label):\n            body[\"display_name\"] = label\n        hitl = self._hitl_request_id()\n        if hitl:\n            body[\"hitl_request_id\"] = hitl\n        resp = httpx.post(f\"{base}/v1/approvals\", json=body, headers=headers, timeout=30.0, follow_redirects=False)\n        try:\n            rb = resp.json()\n        except ValueError:\n            rb = {}\n        if resp.status_code != 201:\n            e = rb.get(\"error\") or {}\n            self.status = {\"recorded\": False, \"reason\": e.get(\"code\")}\n            return Message(text=f\"NOT RECORDED ({decision}): {e.get('code', 'HTTP_' + str(resp.status_code))} - \"\n                                f\"{e.get('message', '')} [request {e.get('request_id', '-')}]. Nothing was executed.\")\n        self.status = {\"recorded\": True, \"approval_id\": rb[\"approval_id\"], \"decision\": rb[\"decision\"]}\n        return Message(text=(\n            f\"HUMAN DECISION RECORDED: {rb['decision'].upper()} {rb['approval_id']} for {plan_id}\\n\"\n            f\"plan_sha256 {rb['plan_sha256']}\\nsnapshot_sha256 {rb['snapshot_sha256']}\\n\"\n            f\"status {rb['status']}; plan state {rb['plan_state']}; expires {rb['expires_at']}; event {rb['event_id']}\"\n            f\"; HITL request {rb.get('hitl_request_id') or '-'}\\n{rb['note']}\"))\n",
+                "fileTypes": [],
+                "file_path": "",
+                "password": false,
+                "name": "code",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "info": "",
+                "load_from_db": false,
+                "title_case": false
+              },
+              "decision": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "options": [
+                  "approve",
+                  "reject"
+                ],
+                "options_metadata": [],
+                "combobox": false,
+                "dialog_inputs": {},
+                "toggle": false,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "decision",
+                "value": "approve",
+                "display_name": "Decision (fixed for this branch)",
+                "advanced": false,
+                "api_editable": false,
+                "dynamic": false,
+                "info": "Set once when building the flow: approve on the Approve branch, reject on the Reject branch. Never derived from text.",
+                "title_case": false,
+                "track_in_telemetry": true,
+                "external_options": {},
+                "type": "str",
+                "_input_type": "DropdownInput"
+              },
+              "reviewed": {
+                "trace_as_input": true,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": true,
+                "placeholder": "",
+                "show": true,
+                "name": "reviewed",
+                "value": "",
+                "display_name": "Reviewed snapshot (Human Input branch)",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageInput"
+              },
+              "reviewer_label": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "reviewer_label",
+                "value": "",
+                "display_name": "Reviewer name (label only)",
+                "advanced": true,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "Stored with the record; confers no authority.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              },
+              "workspace": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "workspace",
+                "value": "demo-001",
+                "display_name": "Workspace",
+                "advanced": true,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              }
+            },
+            "description": "Trusted adapter after Human Input: records the fixed decision of this branch against the exact reviewed snapshot hash (POST /v1/approvals). Never executes a release.",
+            "icon": "gavel",
+            "base_classes": [
+              "Message"
+            ],
+            "display_name": "TaskSprint Review Decision",
+            "documentation": "",
+            "minimized": false,
+            "custom_fields": {},
+            "output_types": [],
+            "pinned": false,
+            "conditional_paths": [],
+            "frozen": false,
+            "outputs": [
+              {
+                "types": [
+                  "Message"
+                ],
+                "selected": "Message",
+                "name": "record",
+                "hidden": null,
+                "display_name": "Decision record",
+                "method": "record_decision",
+                "value": "__UNDEFINED__",
+                "cache": true,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": false,
+                "options": null,
+                "tool_mode": true
+              }
+            ],
+            "field_order": [
+              "reviewed",
+              "decision",
+              "reviewer_label",
+              "api_base",
+              "approver_token",
+              "workspace"
+            ],
+            "beta": false,
+            "legacy": false,
+            "edited": false,
+            "metadata": {
+              "module": "custom_components.tasksprint_review_decision",
+              "code_hash": "7591d53a8cf5",
+              "dependencies": {
+                "total_dependencies": 2,
+                "dependencies": [
+                  {
+                    "name": "httpx",
+                    "version": "0.28.1"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": "1.12.5"
+                  }
+                ]
+              }
+            },
+            "tool_mode": false
+          },
+          "showNode": true,
+          "type": "TaskSprintReviewDecision",
+          "id": "TaskSprintReviewDecision-3s1BH"
+        },
+        "measured": {
+          "width": 320,
+          "height": 419
+        }
+      },
+      {
+        "id": "TaskSprintReviewDecision-rbxsi",
+        "type": "genericNode",
+        "position": {
+          "x": 900,
+          "y": 300
+        },
+        "selected": false,
+        "data": {
+          "node": {
+            "template": {
+              "_type": "Component",
+              "api_base": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": true,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "api_base",
+                "value": "TASKSPRINT_API_BASE",
+                "display_name": "TaskSprint API base",
+                "advanced": true,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              },
+              "approver_token": {
+                "load_from_db": true,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "approver_token",
+                "value": "TS_APPROVER_TOKEN",
+                "display_name": "Approver token",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [],
+                "dynamic": false,
+                "info": "Bind the Credential global TS_APPROVER_TOKEN.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "password": true,
+                "type": "str",
+                "_input_type": "SecretStrInput"
+              },
+              "code": {
+                "type": "code",
+                "required": true,
+                "placeholder": "",
+                "list": false,
+                "show": true,
+                "multiline": true,
+                "value": "# TaskSprint Review Decision: trusted post-decision adapter for TS-90 (Architecture A11; Build Guide 09.2).\n# Wired to ONE branch of the native Human Input node (one instance on \"Approve\", one on \"Reject\"). Its\n# decision is the fixed node setting \"Decision\" (approve | reject), chosen when the flow is built, never\n# parsed from text: the human's click selects which branch (and therefore which instance) runs at all.\n#\n# Across the Human Input pause it receives back the exact review text that TaskSprint Instructor Control\n# produced (Human Input returns its prompt on the chosen branch). It extracts the canonical snapshot JSON,\n# re-hashes it, requires that hash to equal the reference line AND the snapshot hash the backend computes\n# for that plan now, then records ONE decision with the human-approver credential:\n#     POST /v1/approvals {plan_id, plan_sha256, snapshot_sha256, decision, display_name?, hitl_request_id}\n# The backend re-verifies everything (exact hashes, AWAITING_APPROVAL, expiry, one decision per plan).\n# It never executes anything and never sends an \"approved\" flag. \"Reviewer name\" is a label only.\n# Version 1.0.0. Source of truth: tasksprint-lab/components/review_decision.py\nfrom __future__ import annotations\n\nimport hashlib\nimport json\nimport re\nfrom urllib.parse import urlparse\n\nimport httpx\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DropdownInput, MessageInput, MessageTextInput, Output, SecretStrInput\nfrom lfx.schema.message import Message\n\nADAPTER_VERSION = \"review_decision/1.0.0\"\nWORKSPACE_RE = re.compile(r\"^[a-z0-9][a-z0-9-]{2,63}$\")\nNAME_RE = re.compile(r\"^[^\\x00-\\x1f\\x7f]{1,64}$\")\nREF_RE = re.compile(r\"^TS-REVIEW-REF plan_id=(plan_[0-9a-f]{24}) plan_sha256=([0-9a-f]{64}) \"\n                    r\"snapshot_sha256=([0-9a-f]{64})$\", re.M)\nBLOCK_RE = re.compile(r\"^```json\\n(\\{.*\\})\\n```$\", re.M)\n\n\ndef canonical(value) -> str:\n    return json.dumps(value, sort_keys=True, separators=(\",\", \":\"), ensure_ascii=True)\n\n\ndef extract(text: str) -> tuple[dict, str, str, str]:\n    \"\"\"(snapshot, plan_id, plan_sha256, snapshot_sha256) from the reviewed text; raise if not exact.\"\"\"\n    refs, blocks = REF_RE.findall(text or \"\"), BLOCK_RE.findall(text or \"\")\n    if len(refs) != 1 or len(blocks) != 1:\n        raise ValueError(\"the reviewed text does not carry exactly one snapshot and one reference line\")\n    plan_id, plan_sha, snap_sha = refs[0]\n    snapshot = json.loads(blocks[0])\n    if canonical(snapshot) != blocks[0]:\n        raise ValueError(\"the carried snapshot is not in canonical form\")\n    if hashlib.sha256(blocks[0].encode(\"ascii\")).hexdigest() != snap_sha:\n        raise ValueError(\"the carried snapshot does not hash to the referenced snapshot_sha256\")\n    if snapshot.get(\"plan_id\") != plan_id or snapshot.get(\"plan_sha256\") != plan_sha:\n        raise ValueError(\"the reference line does not match the carried snapshot\")\n    return snapshot, plan_id, plan_sha, snap_sha\n\n\nclass TaskSprintReviewDecision(Component):\n    display_name = \"TaskSprint Review Decision\"\n    description = (\"Trusted adapter after Human Input: records the fixed decision of this branch against the exact \"\n                   \"reviewed snapshot hash (POST /v1/approvals). Never executes a release.\")\n    icon = \"gavel\"\n    name = \"TaskSprintReviewDecision\"\n\n    inputs = [\n        MessageInput(name=\"reviewed\", display_name=\"Reviewed snapshot (Human Input branch)\", required=True),\n        DropdownInput(name=\"decision\", display_name=\"Decision (fixed for this branch)\", options=[\"approve\", \"reject\"],\n                      value=\"reject\", info=\"Set once when building the flow: approve on the Approve branch, reject \"\n                                           \"on the Reject branch. Never derived from text.\"),\n        MessageTextInput(name=\"reviewer_label\", display_name=\"Reviewer name (label only)\", value=\"\", advanced=True,\n                         info=\"Stored with the record; confers no authority.\"),\n        MessageTextInput(name=\"api_base\", display_name=\"TaskSprint API base\", value=\"TASKSPRINT_API_BASE\",\n                         load_from_db=True, advanced=True),\n        SecretStrInput(name=\"approver_token\", display_name=\"Approver token\", value=\"\", load_from_db=True,\n                       info=\"Bind the Credential global TS_APPROVER_TOKEN.\"),\n        MessageTextInput(name=\"workspace\", display_name=\"Workspace\", value=\"demo-001\", advanced=True),\n    ]\n    outputs = [Output(display_name=\"Decision record\", name=\"record\", method=\"record_decision\")]\n\n    def _hitl_request_id(self) -> str | None:\n        graph = getattr(self, \"graph\", None)\n        run_id = str(getattr(graph, \"run_id\", \"\") or \"\")\n        ids = [v.id for v in getattr(graph, \"vertices\", []) or [] if str(v.id).startswith(\"HumanInput-\")]\n        if len(ids) == 1 and run_id:\n            rid = f\"{ids[0]}:{run_id}\"\n            return rid if re.match(r\"^[A-Za-z0-9_.:\\-]{1,160}$\", rid) else None\n        return None\n\n    def record_decision(self) -> Message:\n        decision = self.decision if self.decision in (\"approve\", \"reject\") else None\n        if decision is None:\n            raise ValueError(\"Decision must be configured as approve or reject\")\n        base = (self.api_base or \"\").strip().rstrip(\"/\")\n        u = urlparse(base)\n        if u.scheme != \"https\" or not u.hostname or u.path or u.query or u.fragment or u.username:\n            raise ValueError(\"TASKSPRINT_API_BASE must be an https origin without a path\")\n        ws = (self.workspace or \"\").strip()\n        if not WORKSPACE_RE.match(ws):\n            raise ValueError(\"workspace id is invalid\")\n        token = self.approver_token or \"\"\n        if len(token) < 32:\n            raise ValueError(\"approver token is not bound (Credential global TS_APPROVER_TOKEN missing)\")\n        text = self.reviewed.text if isinstance(self.reviewed, Message) else str(self.reviewed or \"\")\n        try:\n            _snap, plan_id, plan_sha, snap_sha = extract(text)\n        except (ValueError, json.JSONDecodeError) as err:\n            self.status = {\"recorded\": False, \"reason\": \"snapshot\"}\n            return Message(text=f\"NOT RECORDED: {err}. Nothing was recorded or executed; run review again.\")\n        headers = {\"Authorization\": f\"Bearer {token}\", \"X-TaskSprint-Workspace\": ws, \"User-Agent\": ADAPTER_VERSION}\n        live = httpx.get(f\"{base}/v1/release-plans/{plan_id}\", headers=headers, timeout=30.0, follow_redirects=False)\n        lb = live.json() if live.headers.get(\"content-type\", \"\").startswith(\"application/json\") else {}\n        if live.status_code != 200 or lb.get(\"snapshot_sha256\") != snap_sha:\n            code = (lb.get(\"error\") or {}).get(\"code\") or (\"SNAPSHOT_CHANGED\" if live.status_code == 200 else\n                                                           f\"HTTP_{live.status_code}\")\n            self.status = {\"recorded\": False, \"reason\": code}\n            return Message(text=f\"NOT RECORDED: {code}. The backend no longer serves this exact snapshot for \"\n                                f\"{plan_id}; nothing was recorded or executed. Run review {plan_id} again.\")\n        body = {\"plan_id\": plan_id, \"plan_sha256\": plan_sha, \"snapshot_sha256\": snap_sha, \"decision\": decision}\n        label = \" \".join(str(self.reviewer_label or \"\").split())\n        if label and NAME_RE.match(label):\n            body[\"display_name\"] = label\n        hitl = self._hitl_request_id()\n        if hitl:\n            body[\"hitl_request_id\"] = hitl\n        resp = httpx.post(f\"{base}/v1/approvals\", json=body, headers=headers, timeout=30.0, follow_redirects=False)\n        try:\n            rb = resp.json()\n        except ValueError:\n            rb = {}\n        if resp.status_code != 201:\n            e = rb.get(\"error\") or {}\n            self.status = {\"recorded\": False, \"reason\": e.get(\"code\")}\n            return Message(text=f\"NOT RECORDED ({decision}): {e.get('code', 'HTTP_' + str(resp.status_code))} - \"\n                                f\"{e.get('message', '')} [request {e.get('request_id', '-')}]. Nothing was executed.\")\n        self.status = {\"recorded\": True, \"approval_id\": rb[\"approval_id\"], \"decision\": rb[\"decision\"]}\n        return Message(text=(\n            f\"HUMAN DECISION RECORDED: {rb['decision'].upper()} {rb['approval_id']} for {plan_id}\\n\"\n            f\"plan_sha256 {rb['plan_sha256']}\\nsnapshot_sha256 {rb['snapshot_sha256']}\\n\"\n            f\"status {rb['status']}; plan state {rb['plan_state']}; expires {rb['expires_at']}; event {rb['event_id']}\"\n            f\"; HITL request {rb.get('hitl_request_id') or '-'}\\n{rb['note']}\"))\n",
+                "fileTypes": [],
+                "file_path": "",
+                "password": false,
+                "name": "code",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "info": "",
+                "load_from_db": false,
+                "title_case": false
+              },
+              "decision": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "options": [
+                  "approve",
+                  "reject"
+                ],
+                "options_metadata": [],
+                "combobox": false,
+                "dialog_inputs": {},
+                "toggle": false,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "decision",
+                "value": "reject",
+                "display_name": "Decision (fixed for this branch)",
+                "advanced": false,
+                "api_editable": false,
+                "dynamic": false,
+                "info": "Set once when building the flow: approve on the Approve branch, reject on the Reject branch. Never derived from text.",
+                "title_case": false,
+                "track_in_telemetry": true,
+                "external_options": {},
+                "type": "str",
+                "_input_type": "DropdownInput"
+              },
+              "reviewed": {
+                "trace_as_input": true,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": true,
+                "placeholder": "",
+                "show": true,
+                "name": "reviewed",
+                "value": "",
+                "display_name": "Reviewed snapshot (Human Input branch)",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageInput"
+              },
+              "reviewer_label": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "reviewer_label",
+                "value": "",
+                "display_name": "Reviewer name (label only)",
+                "advanced": true,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "Stored with the record; confers no authority.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              },
+              "workspace": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "workspace",
+                "value": "demo-001",
+                "display_name": "Workspace",
+                "advanced": true,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              }
+            },
+            "description": "Trusted adapter after Human Input: records the fixed decision of this branch against the exact reviewed snapshot hash (POST /v1/approvals). Never executes a release.",
+            "icon": "gavel",
+            "base_classes": [
+              "Message"
+            ],
+            "display_name": "TaskSprint Review Decision",
+            "documentation": "",
+            "minimized": false,
+            "custom_fields": {},
+            "output_types": [],
+            "pinned": false,
+            "conditional_paths": [],
+            "frozen": false,
+            "outputs": [
+              {
+                "types": [
+                  "Message"
+                ],
+                "selected": "Message",
+                "name": "record",
+                "hidden": null,
+                "display_name": "Decision record",
+                "method": "record_decision",
+                "value": "__UNDEFINED__",
+                "cache": true,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": false,
+                "options": null,
+                "tool_mode": true
+              }
+            ],
+            "field_order": [
+              "reviewed",
+              "decision",
+              "reviewer_label",
+              "api_base",
+              "approver_token",
+              "workspace"
+            ],
+            "beta": false,
+            "legacy": false,
+            "edited": false,
+            "metadata": {
+              "module": "custom_components.tasksprint_review_decision",
+              "code_hash": "7591d53a8cf5",
+              "dependencies": {
+                "total_dependencies": 2,
+                "dependencies": [
+                  {
+                    "name": "httpx",
+                    "version": "0.28.1"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": "1.12.5"
+                  }
+                ]
+              }
+            },
+            "tool_mode": false
+          },
+          "showNode": true,
+          "type": "TaskSprintReviewDecision",
+          "id": "TaskSprintReviewDecision-rbxsi"
+        },
+        "measured": {
+          "width": 320,
+          "height": 419
+        }
+      },
+      {
+        "id": "ChatOutput-NN3Zb",
+        "type": "genericNode",
+        "position": {
+          "x": 1320,
+          "y": -60
+        },
+        "selected": false,
+        "data": {
+          "node": {
+            "base_classes": [
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Display a chat message in the Playground.",
+            "display_name": "Chat Output",
+            "documentation": "https://docs.langflow.org/chat-input-and-output",
+            "edited": false,
+            "field_order": [
+              "input_value",
+              "should_store_message",
+              "sender",
+              "sender_name",
+              "session_id",
+              "context_id",
+              "data_template",
+              "clean_data"
+            ],
+            "frozen": false,
+            "icon": "MessagesSquare",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "0aab1c78e1dc",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "orjson",
+                    "version": "3.11.9"
+                  },
+                  {
+                    "name": "fastapi",
+                    "version": "0.139.2"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 3
+              },
+              "module": "lfx.components.input_output.chat_output.ChatOutput"
+            },
+            "minimized": true,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Output Message",
+                "group_outputs": false,
+                "method": "message_response",
+                "name": "message",
+                "selected": "Message",
+                "tool_mode": true,
+                "types": [
+                  "Message"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "clean_data": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Basic Clean Data",
+                "dynamic": false,
+                "info": "Whether to clean data before converting to string.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "clean_data",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              },
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "from collections.abc import Generator\nfrom typing import Any\n\nimport orjson\nfrom fastapi.encoders import jsonable_encoder\n\nfrom lfx.base.io.chat import ChatComponent\nfrom lfx.helpers.data import safe_convert\nfrom lfx.inputs.inputs import BoolInput, DropdownInput, HandleInput, MessageTextInput\nfrom lfx.schema.data import Data\nfrom lfx.schema.dataframe import DataFrame\nfrom lfx.schema.message import Message\nfrom lfx.schema.properties import Source\nfrom lfx.template.field.base import Output\nfrom lfx.utils.constants import (\n    MESSAGE_SENDER_AI,\n    MESSAGE_SENDER_NAME_AI,\n    MESSAGE_SENDER_USER,\n)\n\n\nclass ChatOutput(ChatComponent):\n    display_name = \"Chat Output\"\n    description = \"Display a chat message in the Playground.\"\n    documentation: str = \"https://docs.langflow.org/chat-input-and-output\"\n    icon = \"MessagesSquare\"\n    name = \"ChatOutput\"\n    minimized = True\n\n    inputs = [\n        HandleInput(\n            name=\"input_value\",\n            display_name=\"Inputs\",\n            info=\"Message to be passed as output.\",\n            input_types=[\"Data\", \"JSON\", \"DataFrame\", \"Table\", \"Message\"],\n            required=True,\n        ),\n        BoolInput(\n            name=\"should_store_message\",\n            display_name=\"Store Messages\",\n            info=\"Store the message in the history.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"sender\",\n            display_name=\"Sender Type\",\n            options=[MESSAGE_SENDER_AI, MESSAGE_SENDER_USER],\n            value=MESSAGE_SENDER_AI,\n            advanced=True,\n            info=\"Type of sender.\",\n        ),\n        MessageTextInput(\n            name=\"sender_name\",\n            display_name=\"Sender Name\",\n            info=\"Name of the sender.\",\n            value=MESSAGE_SENDER_NAME_AI,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"session_id\",\n            display_name=\"Session ID\",\n            info=\"The session ID of the chat. If empty, the current session ID parameter will be used.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"context_id\",\n            display_name=\"Context ID\",\n            info=\"The context ID of the chat. Adds an extra layer to the local memory.\",\n            value=\"\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"data_template\",\n            display_name=\"Data Template\",\n            value=\"{text}\",\n            advanced=True,\n            info=\"Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.\",\n        ),\n        BoolInput(\n            name=\"clean_data\",\n            display_name=\"Basic Clean Data\",\n            value=True,\n            advanced=True,\n            info=\"Whether to clean data before converting to string.\",\n        ),\n    ]\n    outputs = [\n        Output(\n            display_name=\"Output Message\",\n            name=\"message\",\n            method=\"message_response\",\n        ),\n    ]\n\n    def _build_source(self, id_: str | None, display_name: str | None, source: str | None) -> Source:\n        source_dict = {}\n        if id_:\n            source_dict[\"id\"] = id_\n        if display_name:\n            source_dict[\"display_name\"] = display_name\n        if source:\n            # Handle case where source is a ChatOpenAI object\n            if hasattr(source, \"model_name\"):\n                source_dict[\"source\"] = source.model_name\n            elif hasattr(source, \"model\"):\n                source_dict[\"source\"] = str(source.model)\n            else:\n                source_dict[\"source\"] = str(source)\n        return Source(**source_dict)\n\n    async def message_response(self) -> Message:\n        # First convert the input to string if needed\n        text = self.convert_to_string()\n\n        # Get source properties\n        source, _, display_name, source_id = self.get_properties_from_source_component()\n\n        # Create or use existing Message object\n        if isinstance(self.input_value, Message) and not self.is_connected_to_chat_input():\n            message = self.input_value\n            # Update message properties\n            message.text = text\n            # Preserve existing session_id from the incoming message if it exists\n            existing_session_id = message.session_id\n        else:\n            message = Message(text=text)\n            existing_session_id = None\n\n        # Set message properties\n        message.sender = self.sender\n        message.sender_name = self.sender_name\n        # Preserve session_id from incoming message, or use component/graph session_id\n        message.session_id = (\n            self.session_id or existing_session_id or (self.graph.session_id if hasattr(self, \"graph\") else None) or \"\"\n        )\n        message.context_id = self.context_id\n        message.flow_id = self.graph.flow_id if hasattr(self, \"graph\") else None\n        message.properties.source = self._build_source(source_id, display_name, source)\n\n        # Store message if needed\n        if message.session_id and self.should_store_message:\n            stored_message = await self.send_message(message)\n            self.message.value = stored_message\n            message = stored_message\n\n        # Set accumulated token usage from all upstream LLM vertices.\n        # This must happen AFTER send_message() because streaming captures\n        # usage from chunks and would overwrite accumulated totals.\n        if hasattr(self, \"_vertex\") and self._vertex is not None:\n            accumulated_usage = self._vertex._accumulate_upstream_token_usage()  # noqa: SLF001\n            if accumulated_usage:\n                message.properties.usage = accumulated_usage\n                if self.should_store_message and message.get_id():\n                    message = await self._update_stored_message(message)\n                    await self._send_message_event(message, id_=message.get_id())\n\n        self.status = message\n        return message\n\n    def _serialize_data(self, data: Data) -> str:\n        \"\"\"Serialize Data object to JSON string.\"\"\"\n        # Convert data.data to JSON-serializable format\n        serializable_data = jsonable_encoder(data.data)\n        # Serialize with orjson, enabling pretty printing with indentation\n        json_bytes = orjson.dumps(serializable_data, option=orjson.OPT_INDENT_2)\n        # Convert bytes to string and wrap in Markdown code blocks\n        return \"```json\\n\" + json_bytes.decode(\"utf-8\") + \"\\n```\"\n\n    def _validate_input(self) -> None:\n        \"\"\"Validate the input data and raise ValueError if invalid.\"\"\"\n        if self.input_value is None:\n            msg = \"Input data cannot be None\"\n            raise ValueError(msg)\n        if isinstance(self.input_value, list) and not all(\n            isinstance(item, Message | Data | DataFrame | str) for item in self.input_value\n        ):\n            invalid_types = [\n                type(item).__name__\n                for item in self.input_value\n                if not isinstance(item, Message | Data | DataFrame | str)\n            ]\n            msg = f\"Expected Data or DataFrame or Message or str, got {invalid_types}\"\n            raise TypeError(msg)\n        if not isinstance(\n            self.input_value,\n            Message | Data | DataFrame | str | list | Generator | type(None),\n        ):\n            type_name = type(self.input_value).__name__\n            msg = f\"Expected Data or DataFrame or Message or str, Generator or None, got {type_name}\"\n            raise TypeError(msg)\n\n    def convert_to_string(self) -> str | Generator[Any, None, None]:\n        \"\"\"Convert input data to string with proper error handling.\"\"\"\n        self._validate_input()\n        clean_data: bool = getattr(self, \"clean_data\", False)\n        if isinstance(self.input_value, list):\n            return \"\\n\".join([safe_convert(item, clean_data=clean_data) for item in self.input_value])\n        if isinstance(self.input_value, Generator):\n            return self.input_value\n        return safe_convert(self.input_value, clean_data=clean_data)\n"
+              },
+              "context_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Context ID",
+                "dynamic": false,
+                "info": "The context ID of the chat. Adds an extra layer to the local memory.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "context_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "data_template": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Data Template",
+                "dynamic": false,
+                "info": "Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "data_template",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "{text}"
+              },
+              "input_value": {
+                "_input_type": "HandleInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Inputs",
+                "dynamic": false,
+                "info": "Message to be passed as output.",
+                "input_types": [
+                  "Data",
+                  "JSON",
+                  "DataFrame",
+                  "Table",
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "input_value",
+                "override_skip": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "other",
+                "value": ""
+              },
+              "sender": {
+                "_input_type": "DropdownInput",
+                "advanced": true,
+                "api_editable": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Sender Type",
+                "dynamic": false,
+                "external_options": {},
+                "info": "Type of sender.",
+                "name": "sender",
+                "options": [
+                  "Machine",
+                  "User"
+                ],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": "Machine"
+              },
+              "sender_name": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Sender Name",
+                "dynamic": false,
+                "info": "Name of the sender.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "sender_name",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "AI"
+              },
+              "session_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Session ID",
+                "dynamic": false,
+                "info": "The session ID of the chat. If empty, the current session ID parameter will be used.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "session_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "should_store_message": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Store Messages",
+                "dynamic": false,
+                "info": "Store the message in the history.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "should_store_message",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              }
+            },
+            "tool_mode": false,
+            "lf_version": "1.12.5"
+          },
+          "showNode": false,
+          "type": "ChatOutput",
+          "id": "ChatOutput-NN3Zb"
+        },
+        "measured": {
+          "width": 192,
+          "height": 52
+        }
+      },
+      {
+        "id": "ChatOutput-wGhH9",
+        "type": "genericNode",
+        "position": {
+          "x": 1320,
+          "y": 360
+        },
+        "selected": false,
+        "data": {
+          "node": {
+            "base_classes": [
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Display a chat message in the Playground.",
+            "display_name": "Chat Output",
+            "documentation": "https://docs.langflow.org/chat-input-and-output",
+            "edited": false,
+            "field_order": [
+              "input_value",
+              "should_store_message",
+              "sender",
+              "sender_name",
+              "session_id",
+              "context_id",
+              "data_template",
+              "clean_data"
+            ],
+            "frozen": false,
+            "icon": "MessagesSquare",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "0aab1c78e1dc",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "orjson",
+                    "version": "3.11.9"
+                  },
+                  {
+                    "name": "fastapi",
+                    "version": "0.139.2"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 3
+              },
+              "module": "lfx.components.input_output.chat_output.ChatOutput"
+            },
+            "minimized": true,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Output Message",
+                "group_outputs": false,
+                "method": "message_response",
+                "name": "message",
+                "selected": "Message",
+                "tool_mode": true,
+                "types": [
+                  "Message"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "clean_data": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Basic Clean Data",
+                "dynamic": false,
+                "info": "Whether to clean data before converting to string.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "clean_data",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              },
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "from collections.abc import Generator\nfrom typing import Any\n\nimport orjson\nfrom fastapi.encoders import jsonable_encoder\n\nfrom lfx.base.io.chat import ChatComponent\nfrom lfx.helpers.data import safe_convert\nfrom lfx.inputs.inputs import BoolInput, DropdownInput, HandleInput, MessageTextInput\nfrom lfx.schema.data import Data\nfrom lfx.schema.dataframe import DataFrame\nfrom lfx.schema.message import Message\nfrom lfx.schema.properties import Source\nfrom lfx.template.field.base import Output\nfrom lfx.utils.constants import (\n    MESSAGE_SENDER_AI,\n    MESSAGE_SENDER_NAME_AI,\n    MESSAGE_SENDER_USER,\n)\n\n\nclass ChatOutput(ChatComponent):\n    display_name = \"Chat Output\"\n    description = \"Display a chat message in the Playground.\"\n    documentation: str = \"https://docs.langflow.org/chat-input-and-output\"\n    icon = \"MessagesSquare\"\n    name = \"ChatOutput\"\n    minimized = True\n\n    inputs = [\n        HandleInput(\n            name=\"input_value\",\n            display_name=\"Inputs\",\n            info=\"Message to be passed as output.\",\n            input_types=[\"Data\", \"JSON\", \"DataFrame\", \"Table\", \"Message\"],\n            required=True,\n        ),\n        BoolInput(\n            name=\"should_store_message\",\n            display_name=\"Store Messages\",\n            info=\"Store the message in the history.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"sender\",\n            display_name=\"Sender Type\",\n            options=[MESSAGE_SENDER_AI, MESSAGE_SENDER_USER],\n            value=MESSAGE_SENDER_AI,\n            advanced=True,\n            info=\"Type of sender.\",\n        ),\n        MessageTextInput(\n            name=\"sender_name\",\n            display_name=\"Sender Name\",\n            info=\"Name of the sender.\",\n            value=MESSAGE_SENDER_NAME_AI,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"session_id\",\n            display_name=\"Session ID\",\n            info=\"The session ID of the chat. If empty, the current session ID parameter will be used.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"context_id\",\n            display_name=\"Context ID\",\n            info=\"The context ID of the chat. Adds an extra layer to the local memory.\",\n            value=\"\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"data_template\",\n            display_name=\"Data Template\",\n            value=\"{text}\",\n            advanced=True,\n            info=\"Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.\",\n        ),\n        BoolInput(\n            name=\"clean_data\",\n            display_name=\"Basic Clean Data\",\n            value=True,\n            advanced=True,\n            info=\"Whether to clean data before converting to string.\",\n        ),\n    ]\n    outputs = [\n        Output(\n            display_name=\"Output Message\",\n            name=\"message\",\n            method=\"message_response\",\n        ),\n    ]\n\n    def _build_source(self, id_: str | None, display_name: str | None, source: str | None) -> Source:\n        source_dict = {}\n        if id_:\n            source_dict[\"id\"] = id_\n        if display_name:\n            source_dict[\"display_name\"] = display_name\n        if source:\n            # Handle case where source is a ChatOpenAI object\n            if hasattr(source, \"model_name\"):\n                source_dict[\"source\"] = source.model_name\n            elif hasattr(source, \"model\"):\n                source_dict[\"source\"] = str(source.model)\n            else:\n                source_dict[\"source\"] = str(source)\n        return Source(**source_dict)\n\n    async def message_response(self) -> Message:\n        # First convert the input to string if needed\n        text = self.convert_to_string()\n\n        # Get source properties\n        source, _, display_name, source_id = self.get_properties_from_source_component()\n\n        # Create or use existing Message object\n        if isinstance(self.input_value, Message) and not self.is_connected_to_chat_input():\n            message = self.input_value\n            # Update message properties\n            message.text = text\n            # Preserve existing session_id from the incoming message if it exists\n            existing_session_id = message.session_id\n        else:\n            message = Message(text=text)\n            existing_session_id = None\n\n        # Set message properties\n        message.sender = self.sender\n        message.sender_name = self.sender_name\n        # Preserve session_id from incoming message, or use component/graph session_id\n        message.session_id = (\n            self.session_id or existing_session_id or (self.graph.session_id if hasattr(self, \"graph\") else None) or \"\"\n        )\n        message.context_id = self.context_id\n        message.flow_id = self.graph.flow_id if hasattr(self, \"graph\") else None\n        message.properties.source = self._build_source(source_id, display_name, source)\n\n        # Store message if needed\n        if message.session_id and self.should_store_message:\n            stored_message = await self.send_message(message)\n            self.message.value = stored_message\n            message = stored_message\n\n        # Set accumulated token usage from all upstream LLM vertices.\n        # This must happen AFTER send_message() because streaming captures\n        # usage from chunks and would overwrite accumulated totals.\n        if hasattr(self, \"_vertex\") and self._vertex is not None:\n            accumulated_usage = self._vertex._accumulate_upstream_token_usage()  # noqa: SLF001\n            if accumulated_usage:\n                message.properties.usage = accumulated_usage\n                if self.should_store_message and message.get_id():\n                    message = await self._update_stored_message(message)\n                    await self._send_message_event(message, id_=message.get_id())\n\n        self.status = message\n        return message\n\n    def _serialize_data(self, data: Data) -> str:\n        \"\"\"Serialize Data object to JSON string.\"\"\"\n        # Convert data.data to JSON-serializable format\n        serializable_data = jsonable_encoder(data.data)\n        # Serialize with orjson, enabling pretty printing with indentation\n        json_bytes = orjson.dumps(serializable_data, option=orjson.OPT_INDENT_2)\n        # Convert bytes to string and wrap in Markdown code blocks\n        return \"```json\\n\" + json_bytes.decode(\"utf-8\") + \"\\n```\"\n\n    def _validate_input(self) -> None:\n        \"\"\"Validate the input data and raise ValueError if invalid.\"\"\"\n        if self.input_value is None:\n            msg = \"Input data cannot be None\"\n            raise ValueError(msg)\n        if isinstance(self.input_value, list) and not all(\n            isinstance(item, Message | Data | DataFrame | str) for item in self.input_value\n        ):\n            invalid_types = [\n                type(item).__name__\n                for item in self.input_value\n                if not isinstance(item, Message | Data | DataFrame | str)\n            ]\n            msg = f\"Expected Data or DataFrame or Message or str, got {invalid_types}\"\n            raise TypeError(msg)\n        if not isinstance(\n            self.input_value,\n            Message | Data | DataFrame | str | list | Generator | type(None),\n        ):\n            type_name = type(self.input_value).__name__\n            msg = f\"Expected Data or DataFrame or Message or str, Generator or None, got {type_name}\"\n            raise TypeError(msg)\n\n    def convert_to_string(self) -> str | Generator[Any, None, None]:\n        \"\"\"Convert input data to string with proper error handling.\"\"\"\n        self._validate_input()\n        clean_data: bool = getattr(self, \"clean_data\", False)\n        if isinstance(self.input_value, list):\n            return \"\\n\".join([safe_convert(item, clean_data=clean_data) for item in self.input_value])\n        if isinstance(self.input_value, Generator):\n            return self.input_value\n        return safe_convert(self.input_value, clean_data=clean_data)\n"
+              },
+              "context_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Context ID",
+                "dynamic": false,
+                "info": "The context ID of the chat. Adds an extra layer to the local memory.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "context_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "data_template": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Data Template",
+                "dynamic": false,
+                "info": "Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "data_template",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "{text}"
+              },
+              "input_value": {
+                "_input_type": "HandleInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Inputs",
+                "dynamic": false,
+                "info": "Message to be passed as output.",
+                "input_types": [
+                  "Data",
+                  "JSON",
+                  "DataFrame",
+                  "Table",
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "input_value",
+                "override_skip": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "other",
+                "value": ""
+              },
+              "sender": {
+                "_input_type": "DropdownInput",
+                "advanced": true,
+                "api_editable": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Sender Type",
+                "dynamic": false,
+                "external_options": {},
+                "info": "Type of sender.",
+                "name": "sender",
+                "options": [
+                  "Machine",
+                  "User"
+                ],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": "Machine"
+              },
+              "sender_name": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Sender Name",
+                "dynamic": false,
+                "info": "Name of the sender.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "sender_name",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "AI"
+              },
+              "session_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Session ID",
+                "dynamic": false,
+                "info": "The session ID of the chat. If empty, the current session ID parameter will be used.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "session_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "should_store_message": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Store Messages",
+                "dynamic": false,
+                "info": "Store the message in the history.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "should_store_message",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              }
+            },
+            "tool_mode": false,
+            "lf_version": "1.12.5"
+          },
+          "showNode": false,
+          "type": "ChatOutput",
+          "id": "ChatOutput-wGhH9"
+        },
+        "measured": {
+          "width": 192,
+          "height": 52
+        }
+      },
+      {
+        "id": "ChatOutput-16Z5K",
+        "type": "genericNode",
+        "position": {
+          "x": 900,
+          "y": 700
+        },
+        "selected": false,
+        "data": {
+          "node": {
+            "base_classes": [
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Display a chat message in the Playground.",
+            "display_name": "Chat Output",
+            "documentation": "https://docs.langflow.org/chat-input-and-output",
+            "edited": false,
+            "field_order": [
+              "input_value",
+              "should_store_message",
+              "sender",
+              "sender_name",
+              "session_id",
+              "context_id",
+              "data_template",
+              "clean_data"
+            ],
+            "frozen": false,
+            "icon": "MessagesSquare",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "0aab1c78e1dc",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "orjson",
+                    "version": "3.11.9"
+                  },
+                  {
+                    "name": "fastapi",
+                    "version": "0.139.2"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 3
+              },
+              "module": "lfx.components.input_output.chat_output.ChatOutput"
+            },
+            "minimized": true,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Output Message",
+                "group_outputs": false,
+                "method": "message_response",
+                "name": "message",
+                "selected": "Message",
+                "tool_mode": true,
+                "types": [
+                  "Message"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "clean_data": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Basic Clean Data",
+                "dynamic": false,
+                "info": "Whether to clean data before converting to string.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "clean_data",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              },
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "from collections.abc import Generator\nfrom typing import Any\n\nimport orjson\nfrom fastapi.encoders import jsonable_encoder\n\nfrom lfx.base.io.chat import ChatComponent\nfrom lfx.helpers.data import safe_convert\nfrom lfx.inputs.inputs import BoolInput, DropdownInput, HandleInput, MessageTextInput\nfrom lfx.schema.data import Data\nfrom lfx.schema.dataframe import DataFrame\nfrom lfx.schema.message import Message\nfrom lfx.schema.properties import Source\nfrom lfx.template.field.base import Output\nfrom lfx.utils.constants import (\n    MESSAGE_SENDER_AI,\n    MESSAGE_SENDER_NAME_AI,\n    MESSAGE_SENDER_USER,\n)\n\n\nclass ChatOutput(ChatComponent):\n    display_name = \"Chat Output\"\n    description = \"Display a chat message in the Playground.\"\n    documentation: str = \"https://docs.langflow.org/chat-input-and-output\"\n    icon = \"MessagesSquare\"\n    name = \"ChatOutput\"\n    minimized = True\n\n    inputs = [\n        HandleInput(\n            name=\"input_value\",\n            display_name=\"Inputs\",\n            info=\"Message to be passed as output.\",\n            input_types=[\"Data\", \"JSON\", \"DataFrame\", \"Table\", \"Message\"],\n            required=True,\n        ),\n        BoolInput(\n            name=\"should_store_message\",\n            display_name=\"Store Messages\",\n            info=\"Store the message in the history.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"sender\",\n            display_name=\"Sender Type\",\n            options=[MESSAGE_SENDER_AI, MESSAGE_SENDER_USER],\n            value=MESSAGE_SENDER_AI,\n            advanced=True,\n            info=\"Type of sender.\",\n        ),\n        MessageTextInput(\n            name=\"sender_name\",\n            display_name=\"Sender Name\",\n            info=\"Name of the sender.\",\n            value=MESSAGE_SENDER_NAME_AI,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"session_id\",\n            display_name=\"Session ID\",\n            info=\"The session ID of the chat. If empty, the current session ID parameter will be used.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"context_id\",\n            display_name=\"Context ID\",\n            info=\"The context ID of the chat. Adds an extra layer to the local memory.\",\n            value=\"\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"data_template\",\n            display_name=\"Data Template\",\n            value=\"{text}\",\n            advanced=True,\n            info=\"Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.\",\n        ),\n        BoolInput(\n            name=\"clean_data\",\n            display_name=\"Basic Clean Data\",\n            value=True,\n            advanced=True,\n            info=\"Whether to clean data before converting to string.\",\n        ),\n    ]\n    outputs = [\n        Output(\n            display_name=\"Output Message\",\n            name=\"message\",\n            method=\"message_response\",\n        ),\n    ]\n\n    def _build_source(self, id_: str | None, display_name: str | None, source: str | None) -> Source:\n        source_dict = {}\n        if id_:\n            source_dict[\"id\"] = id_\n        if display_name:\n            source_dict[\"display_name\"] = display_name\n        if source:\n            # Handle case where source is a ChatOpenAI object\n            if hasattr(source, \"model_name\"):\n                source_dict[\"source\"] = source.model_name\n            elif hasattr(source, \"model\"):\n                source_dict[\"source\"] = str(source.model)\n            else:\n                source_dict[\"source\"] = str(source)\n        return Source(**source_dict)\n\n    async def message_response(self) -> Message:\n        # First convert the input to string if needed\n        text = self.convert_to_string()\n\n        # Get source properties\n        source, _, display_name, source_id = self.get_properties_from_source_component()\n\n        # Create or use existing Message object\n        if isinstance(self.input_value, Message) and not self.is_connected_to_chat_input():\n            message = self.input_value\n            # Update message properties\n            message.text = text\n            # Preserve existing session_id from the incoming message if it exists\n            existing_session_id = message.session_id\n        else:\n            message = Message(text=text)\n            existing_session_id = None\n\n        # Set message properties\n        message.sender = self.sender\n        message.sender_name = self.sender_name\n        # Preserve session_id from incoming message, or use component/graph session_id\n        message.session_id = (\n            self.session_id or existing_session_id or (self.graph.session_id if hasattr(self, \"graph\") else None) or \"\"\n        )\n        message.context_id = self.context_id\n        message.flow_id = self.graph.flow_id if hasattr(self, \"graph\") else None\n        message.properties.source = self._build_source(source_id, display_name, source)\n\n        # Store message if needed\n        if message.session_id and self.should_store_message:\n            stored_message = await self.send_message(message)\n            self.message.value = stored_message\n            message = stored_message\n\n        # Set accumulated token usage from all upstream LLM vertices.\n        # This must happen AFTER send_message() because streaming captures\n        # usage from chunks and would overwrite accumulated totals.\n        if hasattr(self, \"_vertex\") and self._vertex is not None:\n            accumulated_usage = self._vertex._accumulate_upstream_token_usage()  # noqa: SLF001\n            if accumulated_usage:\n                message.properties.usage = accumulated_usage\n                if self.should_store_message and message.get_id():\n                    message = await self._update_stored_message(message)\n                    await self._send_message_event(message, id_=message.get_id())\n\n        self.status = message\n        return message\n\n    def _serialize_data(self, data: Data) -> str:\n        \"\"\"Serialize Data object to JSON string.\"\"\"\n        # Convert data.data to JSON-serializable format\n        serializable_data = jsonable_encoder(data.data)\n        # Serialize with orjson, enabling pretty printing with indentation\n        json_bytes = orjson.dumps(serializable_data, option=orjson.OPT_INDENT_2)\n        # Convert bytes to string and wrap in Markdown code blocks\n        return \"```json\\n\" + json_bytes.decode(\"utf-8\") + \"\\n```\"\n\n    def _validate_input(self) -> None:\n        \"\"\"Validate the input data and raise ValueError if invalid.\"\"\"\n        if self.input_value is None:\n            msg = \"Input data cannot be None\"\n            raise ValueError(msg)\n        if isinstance(self.input_value, list) and not all(\n            isinstance(item, Message | Data | DataFrame | str) for item in self.input_value\n        ):\n            invalid_types = [\n                type(item).__name__\n                for item in self.input_value\n                if not isinstance(item, Message | Data | DataFrame | str)\n            ]\n            msg = f\"Expected Data or DataFrame or Message or str, got {invalid_types}\"\n            raise TypeError(msg)\n        if not isinstance(\n            self.input_value,\n            Message | Data | DataFrame | str | list | Generator | type(None),\n        ):\n            type_name = type(self.input_value).__name__\n            msg = f\"Expected Data or DataFrame or Message or str, Generator or None, got {type_name}\"\n            raise TypeError(msg)\n\n    def convert_to_string(self) -> str | Generator[Any, None, None]:\n        \"\"\"Convert input data to string with proper error handling.\"\"\"\n        self._validate_input()\n        clean_data: bool = getattr(self, \"clean_data\", False)\n        if isinstance(self.input_value, list):\n            return \"\\n\".join([safe_convert(item, clean_data=clean_data) for item in self.input_value])\n        if isinstance(self.input_value, Generator):\n            return self.input_value\n        return safe_convert(self.input_value, clean_data=clean_data)\n"
+              },
+              "context_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Context ID",
+                "dynamic": false,
+                "info": "The context ID of the chat. Adds an extra layer to the local memory.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "context_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "data_template": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Data Template",
+                "dynamic": false,
+                "info": "Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "data_template",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "{text}"
+              },
+              "input_value": {
+                "_input_type": "HandleInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Inputs",
+                "dynamic": false,
+                "info": "Message to be passed as output.",
+                "input_types": [
+                  "Data",
+                  "JSON",
+                  "DataFrame",
+                  "Table",
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "input_value",
+                "override_skip": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "other",
+                "value": ""
+              },
+              "sender": {
+                "_input_type": "DropdownInput",
+                "advanced": true,
+                "api_editable": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Sender Type",
+                "dynamic": false,
+                "external_options": {},
+                "info": "Type of sender.",
+                "name": "sender",
+                "options": [
+                  "Machine",
+                  "User"
+                ],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": "Machine"
+              },
+              "sender_name": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Sender Name",
+                "dynamic": false,
+                "info": "Name of the sender.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "sender_name",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "AI"
+              },
+              "session_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Session ID",
+                "dynamic": false,
+                "info": "The session ID of the chat. If empty, the current session ID parameter will be used.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "session_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "should_store_message": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Store Messages",
+                "dynamic": false,
+                "info": "Store the message in the history.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "should_store_message",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              }
+            },
+            "tool_mode": false,
+            "lf_version": "1.12.5"
+          },
+          "showNode": false,
+          "type": "ChatOutput",
+          "id": "ChatOutput-16Z5K"
+        },
+        "measured": {
+          "width": 192,
+          "height": 52
+        }
+      }
+    ],
+    "edges": [
+      {
+        "source": "ChatInput-g4WT9",
+        "sourceHandle": "{œdataTypeœ:œChatInputœ,œidœ:œChatInput-g4WT9œ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "TaskSprintInstructorControl-1BCri",
+        "targetHandle": "{œfieldNameœ:œinput_valueœ,œidœ:œTaskSprintInstructorControl-1BCriœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "data": {
+          "targetHandle": {
+            "fieldName": "input_value",
+            "id": "TaskSprintInstructorControl-1BCri",
+            "inputTypes": [
+              "Message"
+            ],
+            "type": "str"
+          },
+          "sourceHandle": {
+            "dataType": "ChatInput",
+            "id": "ChatInput-g4WT9",
+            "name": "message",
+            "output_types": [
+              "Message"
+            ]
+          }
+        },
+        "id": "xy-edge__ChatInput-g4WT9{œdataTypeœ:œChatInputœ,œidœ:œChatInput-g4WT9œ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}-TaskSprintInstructorControl-1BCri{œfieldNameœ:œinput_valueœ,œidœ:œTaskSprintInstructorControl-1BCriœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "selected": false,
+        "animated": false,
+        "className": ""
+      },
+      {
+        "source": "TaskSprintInstructorControl-1BCri",
+        "sourceHandle": "{œdataTypeœ:œTaskSprintInstructorControlœ,œidœ:œTaskSprintInstructorControl-1BCriœ,œnameœ:œreviewœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "HumanInput-sUEGT",
+        "targetHandle": "{œfieldNameœ:œpromptœ,œidœ:œHumanInput-sUEGTœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "data": {
+          "targetHandle": {
+            "fieldName": "prompt",
+            "id": "HumanInput-sUEGT",
+            "inputTypes": [
+              "Message"
+            ],
+            "type": "str"
+          },
+          "sourceHandle": {
+            "dataType": "TaskSprintInstructorControl",
+            "id": "TaskSprintInstructorControl-1BCri",
+            "name": "review",
+            "output_types": [
+              "Message"
+            ]
+          }
+        },
+        "id": "xy-edge__TaskSprintInstructorControl-1BCri{œdataTypeœ:œTaskSprintInstructorControlœ,œidœ:œTaskSprintInstructorControl-1BCriœ,œnameœ:œreviewœ,œoutput_typesœ:[œMessageœ]}-HumanInput-sUEGT{œfieldNameœ:œpromptœ,œidœ:œHumanInput-sUEGTœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "selected": false,
+        "animated": false,
+        "className": ""
+      },
+      {
+        "source": "HumanInput-sUEGT",
+        "sourceHandle": "{œdataTypeœ:œHumanInputœ,œidœ:œHumanInput-sUEGTœ,œnameœ:œbranch_approveœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "TaskSprintReviewDecision-3s1BH",
+        "targetHandle": "{œfieldNameœ:œreviewedœ,œidœ:œTaskSprintReviewDecision-3s1BHœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "data": {
+          "targetHandle": {
+            "fieldName": "reviewed",
+            "id": "TaskSprintReviewDecision-3s1BH",
+            "inputTypes": [
+              "Message"
+            ],
+            "type": "str"
+          },
+          "sourceHandle": {
+            "dataType": "HumanInput",
+            "id": "HumanInput-sUEGT",
+            "name": "branch_approve",
+            "output_types": [
+              "Message"
+            ]
+          }
+        },
+        "id": "xy-edge__HumanInput-sUEGT{œdataTypeœ:œHumanInputœ,œidœ:œHumanInput-sUEGTœ,œnameœ:œbranch_approveœ,œoutput_typesœ:[œMessageœ]}-TaskSprintReviewDecision-3s1BH{œfieldNameœ:œreviewedœ,œidœ:œTaskSprintReviewDecision-3s1BHœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "selected": false,
+        "animated": false,
+        "className": ""
+      },
+      {
+        "source": "HumanInput-sUEGT",
+        "sourceHandle": "{œdataTypeœ:œHumanInputœ,œidœ:œHumanInput-sUEGTœ,œnameœ:œbranch_rejectœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "TaskSprintReviewDecision-rbxsi",
+        "targetHandle": "{œfieldNameœ:œreviewedœ,œidœ:œTaskSprintReviewDecision-rbxsiœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "data": {
+          "targetHandle": {
+            "fieldName": "reviewed",
+            "id": "TaskSprintReviewDecision-rbxsi",
+            "inputTypes": [
+              "Message"
+            ],
+            "type": "str"
+          },
+          "sourceHandle": {
+            "dataType": "HumanInput",
+            "id": "HumanInput-sUEGT",
+            "name": "branch_reject",
+            "output_types": [
+              "Message"
+            ]
+          }
+        },
+        "id": "xy-edge__HumanInput-sUEGT{œdataTypeœ:œHumanInputœ,œidœ:œHumanInput-sUEGTœ,œnameœ:œbranch_rejectœ,œoutput_typesœ:[œMessageœ]}-TaskSprintReviewDecision-rbxsi{œfieldNameœ:œreviewedœ,œidœ:œTaskSprintReviewDecision-rbxsiœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "selected": false,
+        "animated": false,
+        "className": ""
+      },
+      {
+        "source": "TaskSprintReviewDecision-3s1BH",
+        "sourceHandle": "{œdataTypeœ:œTaskSprintReviewDecisionœ,œidœ:œTaskSprintReviewDecision-3s1BHœ,œnameœ:œrecordœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "ChatOutput-NN3Zb",
+        "targetHandle": "{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-NN3Zbœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}",
+        "data": {
+          "targetHandle": {
+            "fieldName": "input_value",
+            "id": "ChatOutput-NN3Zb",
+            "inputTypes": [
+              "Data",
+              "JSON",
+              "DataFrame",
+              "Table",
+              "Message"
+            ],
+            "type": "other"
+          },
+          "sourceHandle": {
+            "dataType": "TaskSprintReviewDecision",
+            "id": "TaskSprintReviewDecision-3s1BH",
+            "name": "record",
+            "output_types": [
+              "Message"
+            ]
+          }
+        },
+        "id": "xy-edge__TaskSprintReviewDecision-3s1BH{œdataTypeœ:œTaskSprintReviewDecisionœ,œidœ:œTaskSprintReviewDecision-3s1BHœ,œnameœ:œrecordœ,œoutput_typesœ:[œMessageœ]}-ChatOutput-NN3Zb{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-NN3Zbœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "animated": false,
+        "className": ""
+      },
+      {
+        "source": "TaskSprintReviewDecision-rbxsi",
+        "sourceHandle": "{œdataTypeœ:œTaskSprintReviewDecisionœ,œidœ:œTaskSprintReviewDecision-rbxsiœ,œnameœ:œrecordœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "ChatOutput-wGhH9",
+        "targetHandle": "{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-wGhH9œ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}",
+        "data": {
+          "targetHandle": {
+            "fieldName": "input_value",
+            "id": "ChatOutput-wGhH9",
+            "inputTypes": [
+              "Data",
+              "JSON",
+              "DataFrame",
+              "Table",
+              "Message"
+            ],
+            "type": "other"
+          },
+          "sourceHandle": {
+            "dataType": "TaskSprintReviewDecision",
+            "id": "TaskSprintReviewDecision-rbxsi",
+            "name": "record",
+            "output_types": [
+              "Message"
+            ]
+          }
+        },
+        "id": "xy-edge__TaskSprintReviewDecision-rbxsi{œdataTypeœ:œTaskSprintReviewDecisionœ,œidœ:œTaskSprintReviewDecision-rbxsiœ,œnameœ:œrecordœ,œoutput_typesœ:[œMessageœ]}-ChatOutput-wGhH9{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-wGhH9œ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "animated": false,
+        "className": ""
+      },
+      {
+        "source": "TaskSprintInstructorControl-1BCri",
+        "sourceHandle": "{œdataTypeœ:œTaskSprintInstructorControlœ,œidœ:œTaskSprintInstructorControl-1BCriœ,œnameœ:œresultœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "ChatOutput-16Z5K",
+        "targetHandle": "{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-16Z5Kœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}",
+        "data": {
+          "targetHandle": {
+            "fieldName": "input_value",
+            "id": "ChatOutput-16Z5K",
+            "inputTypes": [
+              "Data",
+              "JSON",
+              "DataFrame",
+              "Table",
+              "Message"
+            ],
+            "type": "other"
+          },
+          "sourceHandle": {
+            "dataType": "TaskSprintInstructorControl",
+            "id": "TaskSprintInstructorControl-1BCri",
+            "name": "result",
+            "output_types": [
+              "Message"
+            ]
+          }
+        },
+        "id": "xy-edge__TaskSprintInstructorControl-1BCri{œdataTypeœ:œTaskSprintInstructorControlœ,œidœ:œTaskSprintInstructorControl-1BCriœ,œnameœ:œresultœ,œoutput_typesœ:[œMessageœ]}-ChatOutput-16Z5K{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-16Z5Kœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "animated": false,
+        "className": ""
+      }
+    ],
+    "viewport": {
+      "x": 218.4279475982533,
+      "y": 199.02183406113537,
+      "zoom": 0.6200873362445415
+    }
+  },
+  "is_component": false,
+  "tags": null,
+  "locked": false,
+  "mcp_enabled": false,
+  "access_type": "PRIVATE",
+  "flow_type": "workflow",
+  "a2a_enabled": false,
+  "a2a_card_overrides": null
+}

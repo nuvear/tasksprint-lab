@@ -113,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--apply", action="store_true")
     mode.add_argument("--check", action="store_true", help="verify TS-90 isolation and credential scoping only")
-    p.add_argument("--only", choices=("ts90", "ts20-prompt", "both"), default="both")
+    p.add_argument("--only", choices=("ts90", "ts90-code", "ts20-prompt", "both"), default="both")
     p.add_argument("--force", action="store_true")
     p.add_argument("--langflow-url", default=DEFAULT_LANGFLOW_URL)
     p.add_argument("--bootstrap-file", type=Path, default=DEFAULT_BOOTSTRAP_FILE)
@@ -169,6 +169,35 @@ def main(argv: list[str] | None = None) -> int:
                         bad += not ok
                         print(f"{'PASS' if ok else 'FAIL'} write {TS90} id={res['id']} mcp_enabled="
                               f"{back.get('mcp_enabled')} a2a_enabled={back.get('a2a_enabled')} {probs or ''}")
+            if a.only == "ts90-code":
+                cur = flows.get(TS90)
+                if cur is None:
+                    raise SetupError("TS-90 missing")
+                live = check(c.get(f"/api/v1/flows/{cur['id']}"), "read TS-90")
+                data = copy.deepcopy(live["data"])
+                for n in data["nodes"]:
+                    src = {"TaskSprintInstructorControl": "instructor_control.py",
+                           "TaskSprintReviewDecision": "review_decision.py"}.get(n["data"]["type"])
+                    if src is None:
+                        continue
+                    old = n["data"]["node"]["template"]
+                    _, fe = compile_component(c, REPO_ROOT / "components" / src)
+                    for k, f in old.items():  # keep bindings and the fixed decision setting
+                        if k in fe["template"] and k != "code" and isinstance(f, dict) and "value" in f:
+                            fe["template"][k]["value"] = f["value"]
+                            if f.get("load_from_db"):
+                                fe["template"][k]["load_from_db"] = True
+                    n["data"]["node"] = fe
+                print(f"{'PLAN' if a.dry_run else 'DO'} refresh component code in {TS90} (node ids and edges kept)")
+                if not a.dry_run:
+                    check(c.patch(f"/api/v1/flows/{cur['id']}", json={"data": data}), "update TS-90 code")
+                    back = check(c.get(f"/api/v1/flows/{cur['id']}"), "verify TS-90")
+                    probs = verify_ts90(back)
+                    ok = digest(back["data"]) == digest(data) and not probs and \
+                        [e["id"] for e in back["data"]["edges"]] == [e["id"] for e in live["data"]["edges"]]
+                    bad += not ok
+                    print(f"{'PASS' if ok else 'FAIL'} {TS90} code refreshed; mcp_enabled={back.get('mcp_enabled')} "
+                          f"a2a_enabled={back.get('a2a_enabled')} {probs or ''}")
             if a.only in ("ts20-prompt", "both"):
                 cur = flows.get(TS20)
                 if cur is None:

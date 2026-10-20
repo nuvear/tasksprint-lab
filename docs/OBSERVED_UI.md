@@ -284,3 +284,42 @@ expose it." and toast **Agent updated**; the card answers 404 and `a2a_enabled=f
 separate step **TS20 PRODUCTION MANAGER A2A** under **ASSESS PRODUCTION RELEASE** (`08-12`). Leaving the
 TS-10 editor after a Playground run showed the toast **Flow saved successfully!**; a direct URL navigation
 was instead blocked by the browser's "Leave site?" dialog, so the breadcrumb **TaskSprint** was used.
+
+## Phase 09 additions — Human Input, TS-90, project MCP server tools (20 Oct 2026, 14:15–14:30 UTC)
+
+**Human Input in the Playground (`09-08`).** A run that reaches Human Input shows a chat card titled
+**Waiting for Human Input** with the node's **Input** text rendered as Markdown (single newlines merge into
+one paragraph; a fenced block becomes a horizontally scrolling code box) and one button per **User Choice**:
+**Approve** (white) and **Reject** (red). Clicking sends `POST /api/v2/workflows/{job_id}/resume`; the card
+then keeps only the chosen button with a check mark ("✓ Approve" / "✓ Reject") and the chosen branch's
+Chat Output message appears below (`09-09`, `09-12`). The editor polls `GET /api/v2/workflows/pending?flow_id=…`
+(also for other open flows). The pending entry carries `request_id` `<HumanInput node id>:<job id>`, `kind`
+`node_input`, `options` `[{label, action_id}]`, `allowed_decisions`. Playground runs are background jobs
+(`POST /api/v2/workflows`), so the job id is the run id.
+
+**Reload (`09-10`).** After a reload the resolved card and the decision message remain in the session.
+**Stale card (`09-13`).** If the suspended job was cancelled (`POST /api/v2/workflows/stop` → "Job … cancelled
+successfully."), clicking a button still turns the card into "✓ Approve", but `/resume` answers **409**
+and no message appears. Repeat resume of a completed job: 409 `NOT_RESUMABLE` "Job is not suspended, already
+resumed, or the request_id is stale."
+
+**Sessions.** The Playground's **+** next to **Sessions** creates "New Session 0", "New Session 1", …; the
+first is "Default Session".
+
+**Project → MCP Server tab (`09-04`, `09-05`).** **Flows/Tools** "No actions added to this server", **Edit
+Tools** opens **MCP Server Tools** with columns **Flow Name**, **Description**, **Tool**, **Requires
+Approval** (toggle) and a checkbox per flow (TS-90 listed as `TS_90_INSTRUCTOR_CONSOLE`, unchecked). Right
+side: **Auth: ✓ API Key**, **Edit Auth**, tabs **Auto install** / **JSON**, OS tabs, **Transport** SSE /
+Streamable HTTP, JSON with placeholder `YOUR_API_KEY`, **Generate API key** (not clicked).
+
+**Agent pane for a non-agent flow (`09-03`).** TS-90 shows **Serve as an A2A agent** with the **Draft** chip
+and toggle off, "Off. Nobody can reach it yet.", the flow name/description card, "Not reachable yet. Publish
+to expose it.", **Address** URL/curl and **Customize card** (not saved).
+
+**Global Variables (`09-01`).** The three new Credential rows `TS_APPROVER_TOKEN`, `TS_EVALUATOR_TOKEN`,
+`TS_INSTRUCTOR_TOKEN` show value `*****`; table "1 to 23 of 23".
+
+**Editor state.** Returning to a flow's canvas after Playground runs (TS-20, TS-90) left the editor with
+unsaved client changes; navigating away raised the browser's "Leave site?" dialog, which was discarded.
+The server copies were unchanged (`import_flows.py --dry-run` keep ×7).
+

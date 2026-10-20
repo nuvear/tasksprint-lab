@@ -1,13 +1,17 @@
 # Build status
 
-**Last updated:** 20 October 2026, about 13:45 UTC (Phase 08 executed).
-**Current gate:** **GATE 08 PASS** (`docs/PHASE08_REPORT.md`) on branch `feature/phase-08-a2a` (not
-pushed; lab redeployed by the orchestrator from `main` = `ea746f1`, lab 0.5.0). Genuine A2A JSON-RPC 0.3
-exchange Sprint Room → TS-20 captured with Task/context/artifact IDs, lab exchange records and
-Operations' own child-run trace; card `protocolVersion` 0.3.0; unauthorized execution 401; peer-off
-bounded failure; no plan, approval or release created (deploy blocked by the Phase 10 manifest gate).
-Open owner decisions: http:// card URL behind Railway TLS, handoff contract 1.1, tool name
-`assess_production_release`, Operations' 8-action budget pressure. GATE 07 evidence `docs/PHASE07_REPORT.md`.
+**Last updated:** 20 October 2026, about 14:30 UTC (Phase 09 executed).
+**Current gate:** **GATE 09 PASS** (`docs/PHASE09_REPORT.md`) on branch `feature/phase-09-approval` (not
+pushed; lab redeployed by the orchestrator from `main` = `a618e1e`, lab 0.6.0, migration 0004). Human-only
+TS-90 Instructor Console (no Agent) pauses at native Human Input and records Approve/Reject against the
+exact plan + snapshot hash; A11 transactional execution is live for Operations; every live deploy is
+refused at step 5 (`AGENT_MANIFEST_NOT_QUALIFIED`) until Phase 10. Successful execution, replay,
+expiry, stale revision, environment mismatch, stop, reset and rollback are isolated test evidence.
+Plan contract 1.1 and the Operations prompt line are owner-approved. GATE 08: `docs/PHASE08_REPORT.md`.
+**Live-instance changes in Phase 09:** Credential globals `TS_APPROVER_TOKEN`, `TS_INSTRUCTOR_TOKEN`,
+`TS_EVALUATOR_TOKEN`; new flow `TS-90 Instructor Console` `cda48ae0-d8bb-44bc-a422-91f9576fba43`
+(`mcp_enabled=false`, `a2a_enabled=false`); TS-20 Agent instructions updated in place (A2A still Live).
+Lab data: plans `plan_3d882f58…`, `plan_2dfcbf53…`, `plan_15172498…` and three approvals (test evidence).
 **Live-instance changes in Phase 08:** new flow `TS-20 Production Manager`
 `489890aa-4bd0-4641-b669-070f10e0922b` (`flow_type=agent`, `a2a_enabled=true`, published in the
 Agent pane); TS-10 updated in place (Bounded Toolset 1.1.0 + TaskSprint A2A Audit node); API key
@@ -277,3 +281,20 @@ Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
 | A2A-04 unreachable peer / duplicate | PASS | peer off → `PEER_UNAVAILABLE`, exchange `a2ax_06d6a76d…` without task, no artifact/release; same-turn duplicate → `DELEGATION_LIMIT`; plan dedup unit-tested |
 | No release | PASS | active `cand_561149e5…` revision 0, history 1 |
 | Exports | DONE | `flows/20_operations.json` (sha256 `c1919eaa…`), `flows/10_sprint_room.json` (`c49e26cf…`); `import_flows.py --dry-run` keep ×6 |
+
+
+## Phase 09 results (20 Oct 2026, 13:50–14:30 UTC)
+
+| Item | Status | Evidence |
+|---|---|---|
+| Lab 0.6.0 (approvals, A11 execution, instructor controls, baseline smoke, evaluator stub) | TESTED + DEPLOYED | `572 passed in 24.06s`; `phase09_checks.py lab` PASS after the redeploy from `a618e1e` |
+| Human-only credentials | TESTED | 3 Credential globals, masked (`09-01`); only TS-90 binds them (`phase09_flows.py --check`) |
+| TS-90 Instructor Console | TESTED | `cda48ae0-…`; no Agent; off MCP (`09-04`, `09-05`), off A2A (`09-03`, card 404); approver/instructor/evaluator tokens 403 at `/mcp` |
+| HITL-01 Approve / Reject | PASS (test evidence) | `apr_9ae64c4d…` (approve, job `857d3d70…`), `apr_58b2c147…` (reject, job `78612859…`); executions refused: `AGENT_MANIFEST_NOT_QUALIFIED` / `APPROVAL_REJECTED` |
+| HITL-02 resume / reload | PASS (scope stated) | reload keeps the resolved card and the record; repeat resume 409 `NOT_RESUMABLE`; cancelled checkpoint → stale click 409, nothing recorded, fresh review recorded `apr_1a5d6dc1…`; restart durability NOT TESTED |
+| SEC-05 / SEC-06 / SEC-07 live | PASS | `APPROVAL_REQUIRED` `evt_a5b8e4b7…`; forged fields 422; operations approving 403; hash mismatches 409 |
+| SEC-08, SEC-09, SEC-13, SEC-17, SEC-18, REC-02, REC-03 | PASS (isolated tests only) | `tests/security/test_approval_execution.py`, `tests/unit/test_instructor_controls.py` |
+| AE-04-style urgent bypass (TS-20) | PASS (single run) | run `run_25958310…`: read_release_plan, get_release_status; no execution call, no approval |
+| Exports | DONE | `flows/90_instructor.json` (sha256 `d2255d88…`), `flows/20_operations.json` (`cf1c713b…`); `import_flows.py --dry-run` keep ×7 |
+| Deploy success / live receipt | BLOCKED until Phase 10 | no agent-system manifest can qualify (fail closed) |
+
