@@ -6,6 +6,7 @@
 the `knowledge/` corpus, and does **not** change `skills/implement-todo-change/SKILL.md`.
 `docs/PHASE04_REPORT.md` proposes the owner-approved way to put a short version of it
 into the skill (a new skill version, so the load event records a new hash).
+**Phase 05 update:** the owner approved that text; it is in `implement-todo-change` 1.1.0.
 
 It deliberately contains no complete solution: the instructor reference fixture must
 not reach the Developer through documentation either.

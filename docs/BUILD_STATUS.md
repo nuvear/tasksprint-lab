@@ -1,9 +1,11 @@
 # Build status
 
-**Last updated:** 20 October 2026, about 05:30 UTC (Phase 04, local build).
-**Current gate:** GATE 04 evidence produced locally (real MCP SDK client against the lab;
-Langflow MCP wiring BLOCKED until the lab is deployed); awaiting owner review.
-GATE 03 (Compose step BLOCKED: no Docker) and GATE 02 were produced earlier the same day.
+**Last updated:** 20 October 2026, about 07:20 UTC (Phase 05 build side prepared).
+**Current gate:** Phase 05 build side PREPARED on `main` (Dockerfiles, entrypoints, Railway
+guide, railway check mode); **BLOCKED: image build and deployment pending Raj** (no Docker on
+the build VM; Raj creates the Railway services). GATE 05 not yet evidenced.
+GATE 04 evidence was produced locally earlier the same day (Langflow MCP wiring BLOCKED until
+the lab is deployed); GATE 03 (Compose step BLOCKED: no Docker) and GATE 02 before that.
 Phase 01 (model connection, component templates) is not recorded as complete in
 this file; Phase 02 is local-only and does not depend on it.
 **Live-instance changes made in Phases 00 and 02:** none. No flows, keys, variables,
@@ -135,6 +137,28 @@ Nothing in Langflow, Railway or `nuvear/langflow-railway` was touched.
 | Langflow MCP Tools component ↔ lab | **BLOCKED** | lab not deployed (Phase 05); header/Credential binding not yet observed |
 | Gate command `uv run pytest -q tests/unit tests/security tests/integration tests/protocol` | TESTED: **422 passed** | 278 unit + 91 security + 10 integration + 43 protocol, 16.29 s, 0 failed, 0 skipped |
 
+## Phase 05 results — build side only (20 Oct 2026, owner VM, no Docker)
+
+Full detail: `docs/PHASE05_PREP_REPORT.md`; owner steps: `docs/RAILWAY_SETUP.md`.
+`main` fast-forwarded to `feature/phase-04-mcp` so Railway can deploy from `main`. Nothing
+in Langflow, Railway, Postgres or `nuvear/langflow-railway` was touched; nothing pushed.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Owner decision: `implement-todo-change` 1.1.0 (grammar limits) | APPLIED, TESTED | lab appends 1.1.0 next to a recorded 1.0.0 (`test_version_bump_appends…`, real start against such a DB) |
+| Owner decision: `read_test_report` stays qa/ops/coordinator | APPLIED | `prompts/developer.md` reworded (Coordinator relays); coordinator.md unchanged |
+| `Dockerfile.lab`, `Dockerfile.runner`, `.dockerignore` | WRITTEN, STATIC CHECKS TESTED; **NOT BUILT** | `tests/unit/test_deploy_files.py` (tag pins, lock-only install, non-root USER, PORT, `/healthz`, COPY allowlists, context exclusions, no VOLUME) |
+| Base-image digest pinning | TODO | needs a Docker host (`docker buildx imagetools inspect`) |
+| Entrypoints `services/{lab,runner}/serve.py` ($PORT, one worker, lab 0.0.0.0, runner dual-stack ::) | TESTED as processes | `tests/integration/test_serve_railway_mode.py`, `tests/unit/test_serve.py` |
+| Volume ownership on Railway (`RAILWAY_RUN_UID=0` → chown `/data` → drop to 10002) | UNIT-TESTED with a fake OS; real root path **NOT RUN** | cannot run as root on the VM; verify in the first Railway deploy log |
+| Migrations once under a lock; nothing seeded at start | TESTED | 6 concurrent starters apply once; failed migration applies nothing; fresh start has 0 workspaces |
+| `TASKSPRINT_MCP_ALLOWED_HOSTS` from env (public host accepted, others 421) | TESTED (process, Host header) | real Railway domain pending |
+| Redacted logs | TESTED | token-shaped path and bearer strings masked; no token value in lab/runner/script output |
+| `check_stack.py --target railway` (+ `--snapshot save/verify`), `seed_demo.py --lab-url` | TESTED against local processes (http loopback test mode) | save → restart → verify PASS |
+| Railway services, domain, volume, private DNS | **BLOCKED (owner)** | `docs/RAILWAY_SETUP.md` steps 1–2 |
+| Post-deploy checks 05.5 (HTTPS, 401, persistence after lab redeploy) | **NOT RUN** | `docs/RAILWAY_SETUP.md` step 4 |
+| Gate command `uv run pytest -q tests/unit tests/security tests/integration tests/protocol` | TESTED: **463 passed** | 315 unit + 92 security + 13 integration + 43 protocol, 0 failed, 0 skipped |
+
 ## Phase 01 results (20 Oct 2026, live instance, owner's Chrome)
 
 Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
@@ -162,7 +186,7 @@ Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
 | Lab backend Phase 02 subset | BUILT LOCALLY, TESTED | 02 (see above) |
 | Isolated runner, protected app tests | BUILT LOCALLY, TESTED; Compose BLOCKED | 03 (see above) |
 | MCP, retrieval, skills | BUILT LOCALLY, TESTED; Langflow wiring BLOCKED | 04 (see above); wiring 05–06 |
-| Railway services | NOT BUILT | 05 |
+| Railway services | PREPARED (Dockerfiles, entrypoints, guide); image build + deploy BLOCKED pending Raj | 05 (see above) |
 | Live MCP / A2A / HITL protocol tests | MCP: TESTED locally (SDK client ↔ lab), not through Langflow; A2A/HITL NOT RUN | 04–09 |
 | Validated flow exports | PARTIAL (structural captures only) | 01 onward |
 | Application / security / agent evaluations | NOT RUN | 03–11 |
@@ -183,6 +207,10 @@ Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
 - Phase 05 must set `TASKSPRINT_MCP_ALLOWED_HOSTS` to the lab's real host names, or every
   MCP request is refused with 421. Editing `knowledge/*.md` or `SKILL.md` requires a new
   version, or the lab refuses to start (Phase 04).
+- Phase 05 Railway: the lab needs `RAILWAY_RUN_UID=0` (root-owned volume; the entrypoint drops
+  to uid 10002) or it refuses to start; the runner must receive only `PORT`, `TS_RUNNER_TOKEN`
+  and `RAILWAY_DOCKERFILE_PATH`. Pin image digests on a Docker host before relying on builds.
+  Do not mark GATE 05 until the post-deploy checks in `docs/RAILWAY_SETUP.md` pass.
 - Never convert OWNER-REPORTED or presence observations into integration PASS.
 - Phase 02 unit/security results are local backend behaviour only; they are not MCP,
   A2A, Langflow or deployment results.
