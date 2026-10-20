@@ -7,8 +7,10 @@
 Creates, for the Langflow user who owns the bootstrap API key:
   Generic     TASKSPRINT_API_BASE = --lab-url (not secret)
   Credential  TS_COORD_TOKEN, TS_PO_TOKEN, TS_DEV_TOKEN, TS_QA_TOKEN, TS_OPS_TOKEN, TS_APP_TOKEN
-              (values read from --tokens-file; approver/instructor/evaluator tokens are
-              deliberately NOT created: no flow may hold them before Phase 09)
+              (values read from --tokens-file)
+  Phase 09 (--phase09): also Credential TS_APPROVER_TOKEN, TS_INSTRUCTOR_TOKEN, TS_EVALUATOR_TOKEN for the
+              human-only TS-90 Instructor Console. Only TS-90's trusted components bind them; no Agent,
+              MCP server, A2A peer or tool may. Without --phase09 their presence is only reported.
 
 Idempotent: lists existing variables first (GET /api/v1/variables/), creates only
 missing names, and never overwrites an existing variable unless --force is given
@@ -30,7 +32,7 @@ from lf_common import (DEFAULT_BOOTSTRAP_FILE, DEFAULT_LAB_URL, DEFAULT_LANGFLOW
                        DEFAULT_TOKENS_FILE, SetupError, check, langflow_client, read_env)
 
 CREDENTIALS = ("TS_COORD_TOKEN", "TS_PO_TOKEN", "TS_DEV_TOKEN", "TS_QA_TOKEN", "TS_OPS_TOKEN", "TS_APP_TOKEN")
-FORBIDDEN_NOW = ("TS_APPROVER_TOKEN", "TS_INSTRUCTOR_TOKEN", "TS_EVALUATOR_TOKEN")
+HUMAN_ONLY = ("TS_APPROVER_TOKEN", "TS_INSTRUCTOR_TOKEN", "TS_EVALUATOR_TOKEN")
 GENERIC = "TASKSPRINT_API_BASE"
 
 
@@ -40,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--dry-run", action="store_true", help="show what would be created; change nothing")
     mode.add_argument("--apply", action="store_true", help="create missing variables")
     p.add_argument("--force", action="store_true", help="with --apply: overwrite existing TaskSprint variables")
+    p.add_argument("--phase09", action="store_true",
+                   help="also create the human-only TS-90 credentials (approver, instructor, evaluator)")
     p.add_argument("--langflow-url", default=DEFAULT_LANGFLOW_URL)
     p.add_argument("--lab-url", default=DEFAULT_LAB_URL)
     p.add_argument("--tokens-file", type=Path, default=DEFAULT_TOKENS_FILE)
@@ -51,16 +55,18 @@ def main(argv: list[str] | None = None) -> int:
         if lab.scheme != "https" or not lab.hostname or lab.path not in ("", "/") or lab.query:
             raise SetupError("--lab-url must be an https origin without a path")
         tokens = read_env(a.tokens_file)
-        missing = [n for n in CREDENTIALS if len(tokens.get(n, "")) < 32]
+        creds = CREDENTIALS + (HUMAN_ONLY if a.phase09 else ())
+        missing = [n for n in creds if len(tokens.get(n, "")) < 32]
         if missing:
             raise SetupError(f"tokens file lacks usable values for: {', '.join(missing)}")
         wanted: dict[str, tuple[str, str]] = {GENERIC: ("Generic", a.lab_url.rstrip("/"))}
-        wanted.update({n: ("Credential", tokens[n]) for n in CREDENTIALS})
+        wanted.update({n: ("Credential", tokens[n]) for n in creds})
         with langflow_client(a.langflow_url, a.bootstrap_file) as c:
             existing = {v["name"]: v for v in check(c.get("/api/v1/variables/"), "list variables")}
-            for bad in FORBIDDEN_NOW:
-                if bad in existing:
-                    print(f"WARN {bad} exists in Langflow; it should not exist before Phase 09")
+            if not a.phase09:
+                for name in HUMAN_ONLY:
+                    if name in existing:
+                        print(f"NOTE {name} exists (human-only TS-90 credential; created with --phase09)")
             for name, (vtype, value) in wanted.items():
                 cur = existing.get(name)
                 if cur is None:

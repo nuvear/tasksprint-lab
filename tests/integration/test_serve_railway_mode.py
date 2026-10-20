@@ -156,8 +156,8 @@ def test_lab_entrypoint_railway_mode_end_to_end(creds, tmp_path):
     finally:
         stop(runner)
     first, second = logs
-    assert "lab start: bind=0.0.0.0:%d" % lport in first and "migrations_applied_now=[1, 2, 3]" in first
-    assert "migrations_applied_now=[]" in second and "schema_version=3" in second
+    assert "lab start: bind=0.0.0.0:%d" % lport in first and "migrations_applied_now=[1, 2, 3, 4]" in first
+    assert "migrations_applied_now=[]" in second and "schema_version=4" in second
     for value in tokens.values():
         assert value not in first and value not in second
     assert "[REDACTED]" in first

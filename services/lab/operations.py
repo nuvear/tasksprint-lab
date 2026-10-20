@@ -9,17 +9,22 @@ in the modules they call, so a tool call cannot skip a check a REST call gets.
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
+import secrets
 import sqlite3
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
-from . import a2a_exchanges, audit, candidates, memory, release_plans, releases, retrieval, runs, state, testing
+from . import (a2a_exchanges, approvals, audit, baseline_smoke, candidates, executions, memory, release_plans,
+               releases, retrieval, runs, state, testing)
 from .auth import Identity
+from .clock import utc_now_iso
 from .config import Settings
 from .retrieval import KnowledgeBase
 from .runner_client import RunnerClient
-from .schemas import (A2AExchangeCreate, CandidateSubmit, InstructorKnowledgeSearch, KnowledgeSearch, MemorySave,
+from .schemas import (A2AExchangeCreate, AgentEvaluationCreate, ApprovalCreate, CandidateSubmit,
+                      InstructorKnowledgeSearch, KnowledgeSearch, MemorySave, ReleaseExecutionCreate,
                       ReleasePlanCreate, StoryCreate, TestRunCreate, TransitionRequest)
 from .skills import NAME_RE, VERSION_RE, SkillCatalog
 from .store import LabError, Store, require_active_workspace
@@ -205,6 +210,67 @@ class LabOps:
             raise LabError(404, "PLAN_NOT_FOUND", "release plan does not exist in this workspace")
         with self.store.read() as conn:
             return release_plans.plan_view(conn, plan_id, c.workspace_id)
+
+    # ---------------------------------------------------------------- approvals and execution (Phase 09, A11)
+    def record_approval(self, c: Ctx, body: ApprovalCreate) -> dict:
+        return self.write_op(c, "approval.record", lambda conn: approvals.record_decision(
+            conn, workspace_id=c.workspace_id, plan_id=body.plan_id, plan_sha256=body.plan_sha256,
+            snapshot_sha256=body.snapshot_sha256, decision=body.decision, display_name=body.display_name,
+            hitl_request_id=body.hitl_request_id, request_id=c.request_id, approver=c.identity.principal,
+            actor_role=c.identity.role))
+
+    def execute_release(self, c: Ctx, body: ReleaseExecutionCreate) -> dict:
+        """A11: pre-pass (rollback smoke if needed) -> one transaction (steps 1-7) -> post-check (step 8)."""
+        action_id = body.action_id or executions.derive_action_id(c.workspace_id, body.plan_id)
+        try:
+            with self.store.read() as conn:
+                smoke_sha = executions.rollback_smoke_needed(conn, c.workspace_id, body.plan_id, action_id)
+            smoke = None
+            if smoke_sha is not None:
+                smoke = baseline_smoke.run_baseline_smoke(
+                    self.store, self.runner, workspace_id=c.workspace_id, baseline_sha256=smoke_sha,
+                    request_id=c.request_id, actor_role=c.identity.role, run_id=c.run_id)
+            with self.store.write() as conn:
+                self.recheck_run(conn, c)
+                result = executions.execute(conn, workspace_id=c.workspace_id, plan_id=body.plan_id,
+                                            plan_sha256=body.plan_sha256, action_id=action_id,
+                                            request_id=c.request_id, actor_role=c.identity.role, run_id=c.run_id)
+        except LabError as err:
+            extra = err.extra.setdefault("audit", {})
+            extra.setdefault("plan_id", body.plan_id)
+            extra.setdefault("action_id", action_id)
+            self.denial_event(c.request_id, c.identity, "release.execute", c.workspace_id, c.run_id, err)
+            raise
+        if smoke is not None:
+            result["baseline_smoke"] = {"smoke_id": smoke["smoke_id"], "outcome": smoke["outcome"]}
+        if not result["replayed"]:
+            with self.store.write() as conn:
+                result["post_activation"] = executions.post_activation(
+                    conn, workspace_id=c.workspace_id, receipt=result["receipt"], request_id=c.request_id,
+                    actor_role=c.identity.role, run_id=c.run_id)
+        return result
+
+    def record_agent_evaluation(self, c: Ctx, body: AgentEvaluationCreate) -> dict:
+        """Phase 09 stub of the evaluator route: validated and stored; it never qualifies a manifest."""
+        def op(conn: sqlite3.Connection) -> dict:
+            report_id = "aer_" + secrets.token_hex(12)
+            conn.execute("INSERT INTO agent_eval_reports(report_id, manifest_json, cases_json, repetitions,"
+                         " outcomes_json, trajectories_json, created_by, created_at, workspace_id)"
+                         " VALUES (?,?,?,?,?,?,?,?,?)",
+                         (report_id, json.dumps({"harness_version": body.harness_version, **body.manifest},
+                                                sort_keys=True), json.dumps(body.cases, sort_keys=True),
+                          body.repetitions, json.dumps(body.outcomes, sort_keys=True),
+                          json.dumps(body.trajectories, sort_keys=True), c.identity.role, utc_now_iso(),
+                          c.workspace_id))
+            event_id = audit.record_event(conn, request_id=c.request_id, actor_role=c.identity.role,
+                                          action="evaluation.record", outcome="stored", workspace_id=c.workspace_id,
+                                          details={"report_id": report_id, "harness_version": body.harness_version,
+                                                   "cases": len(body.cases), "repetitions": body.repetitions})
+            return {"record_type": "agent_evaluation_report", "report_id": report_id, "stored": True,
+                    "qualifies_agent_manifest": False, "event_id": event_id,
+                    "note": "Phase 09 stub: the report is stored append-only. Qualification of an agent-system "
+                            "manifest is defined and verified in Phase 10; this record qualifies nothing."}
+        return self.write_op(c, "evaluation.record", op)
 
     # ---------------------------------------------------------------- audited A2A exchanges (Phase 08)
     def record_a2a_exchange(self, c: Ctx, body: A2AExchangeCreate) -> dict:

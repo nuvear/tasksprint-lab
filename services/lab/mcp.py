@@ -29,8 +29,8 @@ reason. Tools run the trusted lab functions in-process (``operations.LabOps``);
 one tool call is one action, not one per internal step.
 
 Errors are tool results with ``isError: true`` and a structured
-``{"error": {code, message, request_id}}``. The tool whose backend arrives in
-Phase 09 (``execute_approved_plan``) answers ``NOT_IMPLEMENTED``; nothing is stubbed as success.
+``{"error": {code, message, request_id}}``. Since Phase 09 every tool has a real backend
+(``execute_approved_plan`` -> A11 execution); nothing is stubbed as success.
 Tool schemas take no credentials, URLs, SQL, paths, code or environment names.
 """
 from __future__ import annotations
@@ -62,8 +62,8 @@ from . import SERVICE_VERSION, audit, runs
 from .auth import AGENT_RUNTIME_ROLES, Authenticator, Identity, allowed_roles
 from .config import Settings, valid_workspace_id
 from .operations import Ctx, LabOps
-from .schemas import (CandidateSubmit, KnowledgeSearch, MemorySave, ReadinessQuery, ReleasePlanCreate, StoryCreate,
-                      Strict, TestRunCreate, TransitionRequest)
+from .schemas import (CandidateSubmit, KnowledgeSearch, MemorySave, ReadinessQuery, ReleaseExecutionCreate,
+                      ReleasePlanCreate, StoryCreate, Strict, TestRunCreate, TransitionRequest)
 from .store import LabError, require_active_workspace
 
 log = logging.getLogger("tasksprint.lab.mcp")
@@ -181,9 +181,14 @@ CATALOG: tuple[ToolSpec, ...] = (
     ToolSpec("read_release_plan", "Read one canonical release plan, its state and the exact human-review preview "
              "(no mutation).", PlanRef, ("GET", "/v1/release-plans/{plan_id}"),
              lambda o, c, a: o.read_release_plan(c, a.plan_id), True),
-    ToolSpec("execute_approved_plan", "Execute an exact plan that a human has approved; the backend verifies and "
-             "consumes the approval." + _NI.format(phase="Phase 09"),
-             PlanRef, None, None, False, frozenset({"operations"}), "Phase 09"),
+    ToolSpec("execute_approved_plan", "Execute one exact release plan that a human approved through the protected "
+             "control. The backend re-verifies, in one transaction: stop flag, replay (an identical repeat returns "
+             "the original receipt), a current unexpired unused human approval bound to this plan and snapshot hash, "
+             "target hash, environment, release revision, the candidate's protected test report and the approved "
+             "agent-system manifest (deploy) or the baseline and its smoke suite (rollback). Without a valid human "
+             "approval it is refused; there is no approved flag. Returns the receipt and post-activation checks.",
+             PlanRef, ("POST", "/v1/release-executions"),
+             lambda o, c, a: o.execute_release(c, ReleaseExecutionCreate(plan_id=a.plan_id)), False),
     ToolSpec("get_release_status", "Read the actual active artifact hash, release revision and history.",
              NoArgs, ("GET", "/v1/releases"), lambda o, c, a: o.release_status(c), True),
     ToolSpec("get_app_health", "Read business health of the active app version (distinct from service liveness).",

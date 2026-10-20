@@ -43,9 +43,8 @@ def test_tool_roles_derive_from_rest_permissions():
         if t.route is not None:
             assert t.route in PERMISSIONS, t.name
             assert t.roles() == PERMISSIONS[t.route] & MCP_ROLES, t.name
-        else:
-            assert t.handler is None and t.roles() == {"operations"} and t.planned_phase in ("Phase 08", "Phase 09")
-            assert "NOT IMPLEMENTED" in t.description
+        else:  # pragma: no cover - since Phase 09 every tool has a real backend route
+            raise AssertionError(f"{t.name} has no backing route")
 
 
 def test_no_human_or_instructor_role_gets_tools():

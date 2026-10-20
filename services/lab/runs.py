@@ -4,7 +4,8 @@ Run IDs are generated here; the role comes from the token, the workspace from
 the trusted header, budgets from server constants. A caller cannot select
 authority or budgets, and a new root run does not inherit a parent's spent budget
 unless it is created as that parent's child. Full harness enforcement (tool-level
-counting inside Langflow, stop flags, no-progress detection) is Phase 07.
+counting inside Langflow, no-progress detection) is Phase 07; the instructor stop flag
+(Phase 09) refuses new runs and every run-bound action/commit while it is set.
 """
 from __future__ import annotations
 
@@ -27,6 +28,8 @@ def run_view(row: sqlite3.Row) -> dict[str, Any]:
 
 def create_run(conn: sqlite3.Connection, *, workspace: sqlite3.Row, role: str, conversation_id: str,
                parent_run_id: str | None) -> dict[str, Any]:
+    if workspace["stopped"]:
+        raise LabError(409, "WORKSPACE_STOPPED", "the instructor stop flag is set; no new run can start")
     now = utc_now()
     run_id = "run_" + secrets.token_hex(16)
     if parent_run_id is None:
@@ -53,6 +56,8 @@ def create_run(conn: sqlite3.Connection, *, workspace: sqlite3.Row, role: str, c
 
 
 def _require_live(conn: sqlite3.Connection, run: sqlite3.Row, workspace: sqlite3.Row) -> None:
+    if workspace["stopped"]:
+        raise LabError(409, "WORKSPACE_STOPPED", "the instructor stop flag is set for this workspace")
     if run["generation"] != workspace["generation"]:
         raise LabError(409, "RUN_STALE_GENERATION", "run belongs to an earlier workspace generation")
     if run["status"] != "active":

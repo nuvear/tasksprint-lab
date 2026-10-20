@@ -53,6 +53,10 @@ PERMISSIONS: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/v1/release-plans/{plan_id}"): frozenset({"operations", "human_approver"}),
     ("POST", "/v1/a2a-exchanges"): frozenset({"coordinator"}),
     ("GET", "/v1/a2a-exchanges/{exchange_id}"): frozenset({"coordinator", "instructor", "evaluator"}),
+    # Phase 09 (A8, A11, A12): human-only decisions, approved execution, evaluator reports.
+    ("POST", "/v1/approvals"): frozenset({"human_approver"}),
+    ("POST", "/v1/release-executions"): frozenset({"operations"}),
+    ("POST", "/v1/agent-evaluations"): frozenset({"evaluator"}),
 }
 
 

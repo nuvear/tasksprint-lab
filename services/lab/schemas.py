@@ -60,11 +60,39 @@ class AppCommand(Strict):
     command: Annotated[str, Field(min_length=1, max_length=200)]
 
 
+WorkspaceId = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]{2,63}$")]
+INSTRUCTOR_ACTION_FIELDS: dict[str, frozenset[str]] = {
+    "seed": frozenset(), "reset_preview": frozenset(), "reset_confirm": frozenset({"confirm"}),
+    "load_fixture": frozenset({"fixture"}), "confirm_scope": frozenset({"story_id", "expected_revision"}),
+    "drill_enable": frozenset({"fault_type", "candidate_id", "ttl_minutes"}),
+    "drill_disable": frozenset({"fault_type", "candidate_id"}),
+    "stop": frozenset({"reason"}), "resume": frozenset(),
+}
+
+
 class InstructorAction(Strict):
-    action: Literal["seed", "reset_preview", "load_fixture"]
-    workspace_id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]{2,63}$")]
-    # Only for load_fixture: an allowlisted, labelled instructor fixture name.
+    """Allowlisted instructor actions; each action accepts only its own optional fields."""
+    action: Literal["seed", "reset_preview", "reset_confirm", "load_fixture", "confirm_scope", "drill_enable",
+                    "drill_disable", "stop", "resume"]
+    workspace_id: WorkspaceId
+    # load_fixture: an allowlisted, labelled instructor fixture name.
     fixture: Literal["faulty_delete", "reference_complete"] | None = None
+    # confirm_scope
+    story_id: Annotated[str, Field(pattern=r"^ST-\d{3}$")] | None = None
+    expected_revision: Annotated[int, Field(strict=True, ge=1, le=1_000_000)] | None = None
+    # drill_enable / drill_disable
+    fault_type: Literal["completion_unavailable"] | None = None
+    candidate_id: Annotated[str, Field(pattern=r"^cand_[0-9a-f]{24}$")] | None = None
+    ttl_minutes: Annotated[int, Field(strict=True, ge=1, le=30)] | None = None
+    # reset_confirm: must equal workspace_id
+    confirm: WorkspaceId | None = None
+    # stop: short human note
+    reason: Annotated[str, Field(min_length=1, max_length=120, pattern=r"^[^\x00-\x1f\x7f]+$")] | None = None
+
+    def unexpected_fields(self) -> list[str]:
+        allowed = INSTRUCTOR_ACTION_FIELDS[self.action]
+        return sorted(k for k, v in self.model_dump(exclude={"action", "workspace_id"}).items()
+                      if v is not None and k not in allowed)
 
 
 class KnowledgeSearch(Strict):
@@ -110,3 +138,36 @@ class A2AExchangeCreate(Strict):
     error: dict[str, Any] | None = None
     started_at: Annotated[str, Field(max_length=40)]
     finished_at: Annotated[str, Field(max_length=40)]
+
+
+PlanId = Annotated[str, Field(pattern=r"^plan_[0-9a-f]{24}$")]
+Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+
+
+class ApprovalCreate(Strict):
+    """Human approver only (no MCP tool). There is no 'approved' flag: the decision quotes exact hashes."""
+    plan_id: PlanId
+    plan_sha256: Sha256
+    snapshot_sha256: Sha256
+    decision: Literal["approve", "reject"]
+    # A label shown with the record. It confers no authority (identity = the token's role).
+    display_name: Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[^\x00-\x1f\x7f]+$")] | None = None
+    # The Langflow Human Input request id (``<node>:<run>``), for joining the native pause to this record.
+    hitl_request_id: Annotated[str, Field(pattern=r"^[A-Za-z0-9_.:\-]{1,160}$")] | None = None
+
+
+class ReleaseExecutionCreate(Strict):
+    """Operations only. The server derives the action ID from the plan unless a trusted client supplies one."""
+    plan_id: PlanId
+    plan_sha256: Sha256 | None = None
+    action_id: Annotated[str, Field(pattern=r"^act_[0-9a-f]{24}$")] | None = None
+
+
+class AgentEvaluationCreate(Strict):
+    """Evaluator only (Phase 09 stub; Phase 10 defines qualification). Stored, never self-qualifying."""
+    harness_version: Annotated[str, Field(min_length=1, max_length=64)]
+    manifest: dict[str, Any]
+    cases: Annotated[list[dict[str, Any]], Field(max_length=50)]
+    repetitions: Annotated[int, Field(strict=True, ge=1, le=10)]
+    outcomes: dict[str, Any]
+    trajectories: Annotated[list[dict[str, Any]], Field(max_length=200)] = []

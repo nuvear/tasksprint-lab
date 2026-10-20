@@ -21,7 +21,10 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "enum": [
+        "1.0",
+        "1.1"
+      ]
     },
     "plan_id": {
       "type": "string",
@@ -103,9 +106,16 @@
             "maxLength": 128
           },
           "agent_manifest_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       }
@@ -127,6 +137,28 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "1.0"
+          },
+          "operation": {
+            "const": "deploy"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "agent_manifest_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      }
     }
-  ]
+  ],
+  "description": "Schema 1.1 (Phase 09): a deploy plan may bind agent_manifest_id null when no agent-system manifest is qualified; the backend then refuses its execution (A11 step 5, AGENT_MANIFEST_NOT_QUALIFIED)."
 }

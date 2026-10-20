@@ -296,11 +296,52 @@ CREATE TABLE a2a_exchanges (
 CREATE INDEX a2a_exchanges_by_run ON a2a_exchanges(parent_run_id);
 """ + _immutable("a2a_exchanges")
 
+# Phase 09: human approvals bound to plan + review-snapshot hash, the instructor stop flag,
+# baseline smoke reports, workspace evidence exports (reset) and evaluator-report scoping.
+# The approvals table (0001) has never been written before Phase 09, so columns are added in place.
+MIGRATION_0004 = """
+ALTER TABLE workspaces ADD COLUMN stopped INTEGER NOT NULL DEFAULT 0 CHECK (stopped IN (0,1));
+ALTER TABLE workspaces ADD COLUMN stopped_at TEXT;
+ALTER TABLE approvals ADD COLUMN workspace_id TEXT REFERENCES workspaces(workspace_id);
+ALTER TABLE approvals ADD COLUMN generation INTEGER;
+ALTER TABLE approvals ADD COLUMN snapshot_sha256 TEXT;
+ALTER TABLE approvals ADD COLUMN display_name TEXT;
+ALTER TABLE approvals ADD COLUMN hitl_request_id TEXT;
+ALTER TABLE approvals ADD COLUMN request_id TEXT;
+ALTER TABLE approvals ADD COLUMN status TEXT NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active','consumed','cancelled','closed'));
+CREATE UNIQUE INDEX approvals_one_decision_per_plan ON approvals(plan_id);
+CREATE TRIGGER approvals_no_delete BEFORE DELETE ON approvals BEGIN SELECT RAISE(ABORT, 'approvals are never deleted'); END;
+CREATE TRIGGER approvals_decision_immutable BEFORE UPDATE OF approval_id, plan_id, plan_sha256, approver, decision,
+    created_at, expires_at, workspace_id, generation, snapshot_sha256, display_name, hitl_request_id, request_id
+    ON approvals BEGIN SELECT RAISE(ABORT, 'an approval decision is immutable'); END;
+CREATE TABLE baseline_smoke_runs (
+    smoke_id         TEXT PRIMARY KEY,
+    workspace_id     TEXT NOT NULL REFERENCES workspaces(workspace_id),
+    candidate_sha256 TEXT NOT NULL CHECK (length(candidate_sha256) = 64),
+    suite_sha256     TEXT NOT NULL CHECK (length(suite_sha256) = 64),
+    cases_json       TEXT NOT NULL,
+    outcome          TEXT NOT NULL CHECK (outcome IN ('pass','fail','error')),
+    runner_version   TEXT,
+    created_at       TEXT NOT NULL
+);
+CREATE TABLE workspace_exports (
+    export_id     TEXT PRIMARY KEY,
+    workspace_id  TEXT NOT NULL REFERENCES workspaces(workspace_id),
+    generation    INTEGER NOT NULL,
+    export_json   TEXT NOT NULL,
+    export_sha256 TEXT NOT NULL CHECK (length(export_sha256) = 64),
+    created_at    TEXT NOT NULL
+);
+ALTER TABLE agent_eval_reports ADD COLUMN workspace_id TEXT;
+""" + _immutable("baseline_smoke_runs") + _immutable("workspace_exports")
+
 # (version, name, sql). Never edit an applied migration: add a new version.
 MIGRATIONS: list[tuple[int, str, str]] = [
     (1, "initial lab schema (Phase 02)", MIGRATION_0001),
     (2, "FTS5 knowledge chunk index (Phase 04)", MIGRATION_0002),
     (3, "append-only A2A exchange records (Phase 08)", MIGRATION_0003),
+    (4, "approvals, stop flag, baseline smoke, workspace exports (Phase 09)", MIGRATION_0004),
 ]
 
 

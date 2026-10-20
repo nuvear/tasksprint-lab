@@ -55,6 +55,8 @@ FLOWS = (
     ("20_operations.json", "TS-20 Production Manager", "agent", "operations.md", "TS_OPS_TOKEN", None),
     # Phase 07: built by scripts/phase07_flows.py; listed here for export and re-import (after 01-03, 20).
     ("10_sprint_room.json", "TS-10 Sprint Room", "sprint", "coordinator.md", "TS_COORD_TOKEN", None),
+    # Phase 09: built by scripts/phase09_flows.py; human-only, no Agent; never on MCP or A2A.
+    ("90_instructor.json", "TS-90 Instructor Console", "control", None, "TS_INSTRUCTOR_TOKEN", None),
 )
 DESCRIPTIONS = {
     "TS-30 To-do App": "TaskSprint Phase 06: deterministic To-do App console (no model).",
@@ -63,6 +65,9 @@ DESCRIPTIONS = {
     "TS-03 QA": "TaskSprint Phase 07: QA specialist agent (bounded qa toolset).",
     "TS-10 Sprint Room": ("TaskSprint Phase 08: Scrum Coordinator agent with three bounded specialist delegations and "
                           "one A2A assessment peer (TS-20)."),
+    "TS-90 Instructor Console": ("TaskSprint Phase 09: human-only control flow (no Agent). Typed commands; review "
+                                 "PLAN_ID pauses at native Human Input and records the human decision against the "
+                                 "exact snapshot hash. Never on MCP, A2A or any agent's tools."),
     "TS-20 Production Manager": ("TaskSprint Production Manager (Operations agent). Assesses a release of the synthetic "
                                  "demo-production to-do app from its own evidence and returns a canonical release plan "
                                  "reference or a blocked assessment. Assessment never deploys; a human approves plans "
@@ -194,6 +199,8 @@ def remap_a2a_peer(data: dict, existing: dict[str, dict], base_url: str) -> None
 def build_skeleton(c, name: str, kind: str, prompt: str | None, var: str) -> dict:
     if kind == "sprint":
         raise SetupError("TS-10 Sprint Room is built by scripts/phase07_flows.py, not --source skeleton")
+    if kind == "control":
+        raise SetupError("TS-90 Instructor Console is built by scripts/phase09_flows.py, not --source skeleton")
     ts00 = check(c.get(f"/api/v1/flows/{TS00_ID}"), "read TS-00 skeleton")
     by_type = {n["data"]["type"]: n for n in ts00["data"]["nodes"]}
     chat_in = copy.deepcopy(by_type["ChatInput"]["data"]["node"])

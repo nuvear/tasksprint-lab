@@ -30,9 +30,10 @@ from .mcp import MCP_PATH, McpEndpoint
 from .operations import Ctx, LabOps, RunCheckedStore
 from .retrieval import KnowledgeBase
 from .runner_client import RunnerClient, build_runner
-from .schemas import (A2AExchangeCreate, AppCommand, CandidateSubmit, InstructorAction, InstructorKnowledgeSearch,
-                      KnowledgeSearch, MemorySave, ReadinessQuery, ReleasePlanCreate, RunCreate, StoryCreate,
-                      TestRunCreate, TransitionRequest)
+from .schemas import (A2AExchangeCreate, AgentEvaluationCreate, AppCommand, ApprovalCreate, CandidateSubmit,
+                      InstructorAction, InstructorKnowledgeSearch, KnowledgeSearch, MemorySave, ReadinessQuery,
+                      ReleaseExecutionCreate, ReleasePlanCreate, RunCreate, StoryCreate, TestRunCreate,
+                      TransitionRequest)
 from .skills import SkillCatalog
 from .store import LabError, Store, require_active_workspace
 
@@ -279,6 +280,19 @@ def create_app(settings: Settings | None = None, runner: RunnerClient | None = N
     def read_release_plan(plan_id: str, c: Ctx = Depends(ctx)) -> dict:
         return ops.read_release_plan(c, plan_id)
 
+    @app.post("/v1/approvals", status_code=201)
+    def record_approval(body: ApprovalCreate, c: Ctx = Depends(ctx)) -> dict:
+        return ops.record_approval(c, body)
+
+    @app.post("/v1/release-executions", status_code=201)
+    def execute_release(body: ReleaseExecutionCreate, c: Ctx = Depends(ctx)) -> Any:
+        result = ops.execute_release(c, body)
+        return JSONResponse(status_code=200, content=result) if result["replayed"] else result
+
+    @app.post("/v1/agent-evaluations", status_code=201)
+    def record_agent_evaluation(body: AgentEvaluationCreate, c: Ctx = Depends(ctx)) -> dict:
+        return ops.record_agent_evaluation(c, body)
+
     @app.post("/v1/a2a-exchanges", status_code=201)
     def record_a2a_exchange(body: A2AExchangeCreate, c: Ctx = Depends(ctx)) -> dict:
         return ops.record_a2a_exchange(c, body)
@@ -334,14 +348,26 @@ def create_app(settings: Settings | None = None, runner: RunnerClient | None = N
     def instructor_action(body: InstructorAction, request: Request) -> dict:
         identity: Identity = request.state.identity
         c = Ctx(identity, body.workspace_id, None, _rid(request))
-        if body.action != "load_fixture" and body.fixture is not None:
-            raise LabError(422, "UNEXPECTED_FIELD", "fixture is only accepted with load_fixture")
-        if body.action == "seed":
-            return ops.write_op(c, "instructor.seed", lambda conn: instructor.seed(conn, settings, body.workspace_id, c.request_id))
-        if body.action == "load_fixture":
-            return ops.write_op(c, "instructor.load_fixture", lambda conn: instructor.load_fixture(
-                conn, settings, body.workspace_id, body.fixture, c.request_id))
-        with store.read() as conn:
-            return instructor.reset_preview(conn, settings, body.workspace_id)
+        unexpected = body.unexpected_fields()
+        if unexpected:
+            raise LabError(422, "UNEXPECTED_FIELD", f"{', '.join(unexpected)} not accepted with {body.action}")
+        ws, rid = body.workspace_id, c.request_id
+        handlers = {
+            "seed": lambda conn: instructor.seed(conn, settings, ws, rid),
+            "load_fixture": lambda conn: instructor.load_fixture(conn, settings, ws, body.fixture, rid),
+            "confirm_scope": lambda conn: instructor.confirm_scope(conn, settings, ws, body.story_id,
+                                                                   body.expected_revision, rid),
+            "drill_enable": lambda conn: instructor.drill(conn, settings, ws, True, body.fault_type, body.candidate_id,
+                                                          body.ttl_minutes, rid),
+            "drill_disable": lambda conn: instructor.drill(conn, settings, ws, False, body.fault_type,
+                                                           body.candidate_id, None, rid),
+            "stop": lambda conn: instructor.stop(conn, settings, ws, True, body.reason, rid),
+            "resume": lambda conn: instructor.stop(conn, settings, ws, False, None, rid),
+            "reset_confirm": lambda conn: instructor.reset_confirm(conn, settings, ws, body.confirm, rid),
+        }
+        if body.action == "reset_preview":
+            with store.read() as conn:
+                return instructor.reset_preview(conn, settings, ws)
+        return ops.write_op(c, f"instructor.{body.action}", handlers[body.action])
 
     return app

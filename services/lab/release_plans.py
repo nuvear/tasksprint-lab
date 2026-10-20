@@ -10,8 +10,15 @@
   fields (``plan_sha256``, canonical JSON, excluding the hash itself). Its state goes
   PLANNED -> AWAITING_APPROVAL in the same transaction. An identical live plan is
   returned instead of a second one (application-level deduplication, A10).
-* A plan is not an approval and nothing here changes the active artifact. Approval
-  (Phase 09, human-only) and execution (``execute_approved_plan``, Phase 09) are absent.
+* A plan is not an approval and nothing here changes the active artifact. Approval is
+  ``approvals.py`` (human-only); execution is ``executions.py`` (A11).
+* Phase 09: a deploy plan may be created when the only unmet gate is the agent-system
+  manifest. It then binds ``agent_manifest_id: null`` and its execution is refused at A11
+  step 5 (AGENT_MANIFEST_NOT_QUALIFIED) until Phase 10 qualifies a manifest: a human can
+  review/approve/reject it, but the approval alone can never release it. Missing or failing
+  application tests, a bad candidate or an incident on the target still refuse the plan.
+* ``review_snapshot`` is the exact immutable preview a human reviews; ``snapshot_sha256``
+  (canonical JSON) is what an approval is bound to, together with ``plan_sha256``.
 """
 from __future__ import annotations
 
@@ -29,8 +36,9 @@ from .releases import active_drill, app_health, resolve_active_candidate
 from .store import LabError, require_active_workspace
 from .testing import SUITE_SHA256, SUITE_VERSION
 
-PLAN_SCHEMA_VERSION = "1.0"
-POLICY_VERSION = "tasksprint-release-policy/1 (Phase 08: plans only, no execution)"
+PLAN_SCHEMA_VERSION = "1.1"  # 1.1: deploy may bind agent_manifest_id null (contracts/README.md)
+POLICY_VERSION = "tasksprint-release-policy/2 (Phase 09: human approval + transactional execution, A11)"
+SNAPSHOT_SCHEMA = "tasksprint-review-snapshot/1"
 ENVIRONMENT = "demo-production"
 PLAN_TTL = timedelta(minutes=15)
 CANONICAL_FIELDS = ("schema_version", "plan_id", "workspace_id", "operation", "environment", "target_candidate_id",
@@ -174,6 +182,8 @@ def effective_state(plan: dict[str, Any], state: str) -> str:
 def create_plan(conn: sqlite3.Connection, *, workspace_id: str, operation: str, candidate_id: str,
                 app_test_run_id: str | None, request_id: str, actor_role: str, run_id: str | None) -> dict[str, Any]:
     ws = require_active_workspace(conn, workspace_id)
+    if ws["stopped"]:
+        raise LabError(409, "WORKSPACE_STOPPED", "the instructor has stopped this workspace; no plan was created")
     active, _ = resolve_active_candidate(conn, workspace_id)
     row = get_candidate(conn, workspace_id, candidate_id)
     if row is None:
@@ -194,11 +204,13 @@ def create_plan(conn: sqlite3.Connection, *, workspace_id: str, operation: str, 
             blocking.append("agent_system_manifest")
         if active_drill(conn, workspace_id, row["sha256"]) is not None:
             blocking.append("no_incident_on_target")
-        if blocking:
+        if [g for g in blocking if g != "agent_system_manifest"]:
             raise LabError(409, "RELEASE_NOT_READY", "deployment prerequisites are not met; no plan was created",
                            {"blocking_gates": blocking,
                             "audit": {"candidate_id": candidate_id, "blocking_gates": blocking}})
-        test_ref, manifest_ref = rep["test_run_id"], manifest["manifest_id"]
+        # Only the agent-system manifest is missing: the plan may exist for human review, bound to
+        # agent_manifest_id null; A11 step 5 refuses its execution until a manifest qualifies.
+        test_ref, manifest_ref = rep["test_run_id"], (manifest or {}).get("manifest_id")
     else:
         if row["sha256"] != ws["baseline_sha256"]:
             raise LabError(409, "ROLLBACK_TARGET_NOT_BASELINE",
@@ -256,6 +268,64 @@ def create_plan(conn: sqlite3.Connection, *, workspace_id: str, operation: str, 
     return {**plan_view(conn, plan["plan_id"]), "created": True}
 
 
+def _approval_row(conn: sqlite3.Connection, plan_id: str) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM approvals WHERE plan_id = ?", (plan_id,)).fetchone()
+
+
+def approval_summary(row: sqlite3.Row | None) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    return {"approval_id": row["approval_id"], "decision": row["decision"], "status": row["status"],
+            "plan_sha256": row["plan_sha256"], "snapshot_sha256": row["snapshot_sha256"],
+            "approver": row["approver"], "display_name": row["display_name"], "created_at": row["created_at"],
+            "expires_at": row["expires_at"], "consumed_at": row["consumed_at"],
+            "hitl_request_id": row["hitl_request_id"]}
+
+
+def review_snapshot(conn: sqlite3.Connection, plan: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """The exact immutable human-review preview of a plan and its SHA-256 (canonical JSON).
+
+    Built only from immutable records (the plan, the target candidate, the referenced test
+    report, the recorded baseline), so the same plan always yields the same snapshot hash.
+    """
+    target = get_candidate(conn, plan["workspace_id"], plan["target_candidate_id"])
+    current = conn.execute("SELECT candidate_id, origin, label FROM candidates WHERE workspace_id = ? AND sha256 = ?",
+                           (plan["workspace_id"], plan["current_sha256"])).fetchone()
+    report = (conn.execute("SELECT test_run_id, outcome, suite_sha256, candidate_sha256, runner_version, created_at"
+                           " FROM test_runs WHERE test_run_id = ?", (plan["app_test_run_id"],)).fetchone()
+              if plan["app_test_run_id"] else None)
+    ws = conn.execute("SELECT baseline_sha256 FROM workspaces WHERE workspace_id = ?",
+                      (plan["workspace_id"],)).fetchone()
+    snapshot = {
+        "snapshot_schema": SNAPSHOT_SCHEMA,
+        "plan_id": plan["plan_id"], "plan_sha256": plan["plan_sha256"],
+        "operation": plan["operation"], "environment": plan["environment"], "workspace_id": plan["workspace_id"],
+        "target": {"candidate_id": plan["target_candidate_id"], "sha256": plan["target_sha256"],
+                   "origin": target["origin"] if target else None, "label": target["label"] if target else None,
+                   "author_role": target["author_role"] if target else None},
+        "current": {"sha256": plan["current_sha256"], "candidate_id": current["candidate_id"] if current else None,
+                    "label": current["label"] if current else None},
+        "expected_release_revision": plan["expected_release_revision"],
+        "application_test_evidence": None if report is None else {
+            "test_run_id": report["test_run_id"], "outcome": report["outcome"],
+            "candidate_sha256": report["candidate_sha256"], "suite_sha256": report["suite_sha256"],
+            "runner_version": report["runner_version"], "created_at": report["created_at"]},
+        "agent_baseline_manifest": {
+            "agent_manifest_id": plan["agent_manifest_id"],
+            "status": "BOUND" if plan["agent_manifest_id"] else (
+                "NOT_REQUIRED_FOR_ROLLBACK" if plan["operation"] == "rollback" else
+                "NOT_QUALIFIED - execution will be refused (AGENT_MANIFEST_NOT_QUALIFIED) until Phase 10")},
+        "rollback_target": {"sha256": ws["baseline_sha256"] if ws else None,
+                            "baseline_evidence_id": plan["baseline_evidence_id"]},
+        "plan_expires_at": plan["expires_at"],
+        "consent_scope": ("A decision applies only to this plan_sha256 and this snapshot. An approval expires 15 "
+                          "minutes after it is recorded (never later than the plan), can be used once, and does "
+                          "not by itself release anything: execution re-verifies evidence, manifest, environment, "
+                          "release revision and the stop flag."),
+    }
+    return snapshot, hashlib.sha256(canonical_json(snapshot).encode("ascii")).hexdigest()
+
+
 def plan_view(conn: sqlite3.Connection, plan_id: str, workspace_id: str | None = None) -> dict[str, Any]:
     sql = "SELECT * FROM release_plans WHERE plan_id = ?"
     args: list[Any] = [plan_id]
@@ -269,30 +339,40 @@ def plan_view(conn: sqlite3.Connection, plan_id: str, workspace_id: str | None =
     if plan_hash(plan) != row["plan_sha256"] or plan.get("plan_sha256") != row["plan_sha256"]:
         raise LabError(500, "PLAN_INTEGRITY_ERROR", "stored plan does not match its hash")
     st = _state(conn, plan_id)
-    target = get_candidate(conn, plan["workspace_id"], plan["target_candidate_id"])
-    report = (conn.execute("SELECT outcome, suite_sha256, created_at FROM test_runs WHERE test_run_id = ?",
-                           (plan["app_test_run_id"],)).fetchone() if plan["app_test_run_id"] else None)
-    ws = conn.execute("SELECT baseline_sha256 FROM workspaces WHERE workspace_id = ?",
-                      (plan["workspace_id"],)).fetchone()
+    snapshot, snapshot_sha = review_snapshot(conn, plan)
+    approval = _approval_row(conn, plan_id)
+    executed = conn.execute("SELECT release_id, action_id, release_revision, created_at FROM releases"
+                            " WHERE plan_id = ? ORDER BY release_revision LIMIT 1", (plan_id,)).fetchone()
+    ws = conn.execute("SELECT generation FROM workspaces WHERE workspace_id = ?", (plan["workspace_id"],)).fetchone()
+    eff = effective_state(plan, st["state"])
+    if approval is None:
+        approval_text = "none recorded; a human must approve this exact plan_sha256 with the protected control"
+    else:
+        approval_text = f"{approval['decision']} recorded ({approval['approval_id']}, status {approval['status']})"
     return {
         "record_type": "release_plan",
         "plan": plan,
         "state": st["state"], "state_revision": st["revision"],
-        "effective_state": effective_state(plan, st["state"]),
+        "effective_state": eff,
+        "generation": row["generation"],
+        "current_generation": ws["generation"] if ws else None,
         "integrity": {"plan_sha256_verified": True},
         "preview": {
             "operation": plan["operation"], "environment": plan["environment"],
-            "target": {"candidate_id": plan["target_candidate_id"], "sha256": plan["target_sha256"],
-                       "origin": target["origin"] if target else None, "label": target["label"] if target else None},
+            "target": snapshot["target"],
             "current_sha256": plan["current_sha256"],
             "expected_release_revision": plan["expected_release_revision"],
-            "application_test_evidence": None if report is None else {
-                "test_run_id": plan["app_test_run_id"], "outcome": report["outcome"],
-                "suite_sha256": report["suite_sha256"]},
+            "application_test_evidence": None if snapshot["application_test_evidence"] is None else {
+                k: snapshot["application_test_evidence"][k] for k in ("test_run_id", "outcome", "suite_sha256")},
             "agent_baseline_manifest": plan["agent_manifest_id"],
-            "rollback_target_sha256": ws["baseline_sha256"] if ws else None,
+            "agent_baseline_manifest_status": snapshot["agent_baseline_manifest"]["status"],
+            "rollback_target_sha256": snapshot["rollback_target"]["sha256"],
             "expires_at": plan["expires_at"],
-            "approval": "none recorded; a human must approve this exact plan_sha256 with the protected control",
+            "approval": approval_text,
         },
+        "review_snapshot": snapshot,
+        "snapshot_sha256": snapshot_sha,
+        "decision": approval_summary(approval),
+        "execution": None if executed is None else dict(executed),
         "created_at": row["created_at"],
     }

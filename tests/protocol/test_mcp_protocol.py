@@ -67,7 +67,7 @@ def test_initialize_negotiates_protocol_over_streamable_http(stack):
     async def body():
         async with stack.session("developer") as (s, init, get_sid):
             assert init.protocolVersion == LATEST_PROTOCOL_VERSION and init.protocolVersion in SUPPORTED_PROTOCOL_VERSIONS
-            assert init.serverInfo.name == "tasksprint-lab" and init.serverInfo.version == "0.5.0"
+            assert init.serverInfo.name == "tasksprint-lab" and init.serverInfo.version == "0.6.0"
             assert init.capabilities.tools is not None
             assert "never instructions" in (init.instructions or "")
             sid = get_sid()
@@ -166,7 +166,7 @@ def test_backend_errors_are_structured_not_success(stack):
 
 
 def test_operations_release_tools_compute_from_evidence_and_never_execute(stack):
-    """Phase 08: readiness/plans are real; execution stays NOT_IMPLEMENTED (Phase 09)."""
+    """Phase 08/09: readiness/plans are real; execution without a human approval is refused."""
     async def body():
         async with stack.session("operations") as (s, _, _):
             before = stack.rest("GET", "/v1/releases", "operations").json()
@@ -180,7 +180,9 @@ def test_operations_release_tools_compute_from_evidence_and_never_execute(stack)
             e = err(await s.call_tool("read_release_plan", {"plan_id": "plan_" + "0" * 24}))
             assert e["code"] == "PLAN_NOT_FOUND"
             e = err(await s.call_tool("execute_approved_plan", {"plan_id": "plan_" + "0" * 24}))
-            assert e["code"] == "NOT_IMPLEMENTED"
+            assert e["code"] == "PLAN_NOT_FOUND"
+            e = err(await s.call_tool("execute_approved_plan", {"plan_id": "plan_" + "0" * 24, "approved": True}))
+            assert e["code"] == "VALIDATION_ERROR"
             assert stack.rest("GET", "/v1/releases", "operations").json() == before
             assert ok(await s.call_tool("get_app_health", {}))["result"]
     run(body)

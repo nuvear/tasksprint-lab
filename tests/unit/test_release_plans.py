@@ -73,14 +73,30 @@ def test_readiness_without_passing_report_and_for_faulty_candidate(seeded):
 
 
 def test_deploy_plan_refused_while_not_ready_and_nothing_changes(tested):
-    lab, ref, _ = tested
+    lab, _ref, _ = tested
     before = active(lab)
-    r = plan(lab, "deploy", ref["candidate_id"])
+    faulty = lab.load_fixture("faulty_delete")
+    assert lab.run_tests(faulty["candidate_id"]).json()["outcome"] == "fail"
+    r = plan(lab, "deploy", faulty["candidate_id"])
     assert r.status_code == 409 and r.json()["error"]["code"] == "RELEASE_NOT_READY"
-    assert r.json()["error"]["details"]["blocking_gates"] == ["agent_system_manifest"]
+    assert r.json()["error"]["details"]["blocking_gates"] == ["application_tests", "agent_system_manifest"]
     assert active(lab) == before
     with lab.store().read() as conn:
         assert conn.execute("SELECT COUNT(*) FROM release_plans").fetchone()[0] == 0
+
+
+def test_manifest_only_gap_yields_a_reviewable_plan_bound_to_a_null_manifest(tested):
+    """Phase 09: the plan may exist for human review; A11 step 5 refuses its execution (test_executions)."""
+    lab, ref, report = tested
+    before = active(lab)
+    r = plan(lab, "deploy", ref["candidate_id"])
+    assert r.status_code == 201, r.text
+    body = r.json()
+    Draft202012Validator(PLAN_SCHEMA).validate(body["plan"])
+    assert body["plan"]["agent_manifest_id"] is None and body["plan"]["app_test_run_id"] == report["test_run_id"]
+    assert body["review_snapshot"]["agent_baseline_manifest"]["status"].startswith("NOT_QUALIFIED")
+    assert body["state"] == "AWAITING_APPROVAL" and body["decision"] is None and body["execution"] is None
+    assert active(lab) == before
 
 
 def test_deploy_plan_binds_evidence_hash_and_awaits_approval(tested, qualified):
