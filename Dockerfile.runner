@@ -1,19 +1,25 @@
 # syntax=docker/dockerfile:1
-# TaskSprint runner: the bounded Python-subset interpreter ONLY (Architecture A2, A6).
-# The image contains no lab code, no instructor fixtures, no database and no secrets.
-# NOT BUILT on the owner VM (Docker is not installed there); verify on a Docker host.
-# Before deployment (Phase 05), pin both base images by digest.
+# TaskSprint runner: the bounded Python-subset interpreter ONLY (Architecture A2, A6; Build Guide 05.2).
+# The image contains no lab code, knowledge, skills, instructor fixtures, tests, database or secrets.
+# NOT BUILT on the owner VM (Docker is not installed there). Railway builds it from this file
+# (service variable RAILWAY_DOCKERFILE_PATH=Dockerfile.runner); see docs/RAILWAY_SETUP.md.
+# TODO(Phase 05, owner/Docker host): pin both images by digest, e.g. python:3.12-slim@sha256:<digest>.
 FROM python:3.12-slim
 COPY --from=ghcr.io/astral-sh/uv:0.12.13 /uv /usr/local/bin/uv
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_PYTHON_DOWNLOADS=never UV_LINK_MODE=copy \
-    UV_PROJECT_ENVIRONMENT=/opt/venv
+    UV_PROJECT_ENVIRONMENT=/opt/venv PORT=8001
 WORKDIR /app
+# One lock file for both services: the runner installs the same locked set (it uses only
+# fastapi/uvicorn/pydantic at run time). uv is removed afterwards.
 COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-dev --no-install-project && rm /usr/local/bin/uv
 COPY services/__init__.py services/__init__.py
 COPY services/runner/ services/runner/
-RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin runner
-USER 10001
+RUN groupadd --system --gid 10001 runner \
+    && useradd --system --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin runner
+USER 10001:10001
 EXPOSE 8001
-HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["/opt/venv/bin/python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/healthz', timeout=2).status == 200 else 1)"]
-CMD ["/opt/venv/bin/uvicorn", "--factory", "services.runner.main:create_app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1", "--no-server-header"]
+# Liveness for Docker hosts. Railway uses the service's Healthcheck Path (/healthz) instead.
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["/opt/venv/bin/python", "-c", "import os,sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('PORT', '8001'), timeout=2).status == 200 else 1)"]
+# Binds TASKSPRINT_BIND_HOST (default ::, dual-stack, for Railway private networking) on $PORT.
+CMD ["/opt/venv/bin/python", "-m", "services.runner.serve"]

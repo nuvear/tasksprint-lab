@@ -1,0 +1,39 @@
+# Build context for Dockerfile.lab and Dockerfile.runner. Each Dockerfile COPYs an explicit
+# allowlist; this file additionally keeps secrets, data and non-runtime material out of the
+# context sent to the builder.
+.git
+.gitignore
+.local/
+**/.env
+**/.env.*
+.venv/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+**/*.sqlite3
+**/*.sqlite3-*
+**/*.sqlite
+**/*.db
+**/*.db-*
+tests/
+docs/
+langflow/
+scripts/
+prompts/
+contracts/
+reports/
+runtime/
+exports/
+playwright/
+# Instructor material is excluded except the fixtures the lab's protected seed and
+# fixture actions read (starter v0, labelled faulty and reference fixtures).
+instructor/*
+!instructor/fixtures
+TaskSprint_Build_Guide.html
+README.md
+AGENTS.md
+CLAUDE.md
+SHA256SUMS.txt
+compose.yaml
+Dockerfile.*
+.dockerignore

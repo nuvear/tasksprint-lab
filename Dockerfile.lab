@@ -1,25 +1,36 @@
 # syntax=docker/dockerfile:1
-# TaskSprint lab service (Architecture A2). One worker; SQLite on the /data volume.
-# NOT BUILT on the owner VM (Docker is not installed there); verify on a Docker host.
-# Before deployment (Phase 05), pin both base images by digest.
+# TaskSprint lab service (Architecture A2; Build Guide 05.2). One worker; SQLite on the /data volume.
+# NOT BUILT on the owner VM (Docker is not installed there). Railway builds it from this file
+# (service variable RAILWAY_DOCKERFILE_PATH=Dockerfile.lab); see docs/RAILWAY_SETUP.md.
+# TODO(Phase 05, owner/Docker host): pin both images by digest, e.g. python:3.12-slim@sha256:<digest>
+#   (docker buildx imagetools inspect python:3.12-slim). Digests could not be resolved here.
 FROM python:3.12-slim
 COPY --from=ghcr.io/astral-sh/uv:0.12.13 /uv /usr/local/bin/uv
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_PYTHON_DOWNLOADS=never UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/opt/venv TASKSPRINT_DB_PATH=/data/tasksprint.sqlite3 \
-    TASKSPRINT_FIXTURES_DIR=/app/instructor/fixtures
+    TASKSPRINT_FIXTURES_DIR=/app/instructor/fixtures PORT=8000
 WORKDIR /app
+# Dependencies only from the lock file (exact versions and hashes); uv is removed afterwards.
 COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-dev --no-install-project && rm /usr/local/bin/uv
+# Application code (migrations live in services/lab/store.py), the approved corpus and skill
+# catalog, and the instructor fixtures the protected seed/fixture actions read (never served
+# to developer tools, RAG or skills). Nothing else from the repository.
 COPY services/__init__.py services/__init__.py
 COPY services/lab/ services/lab/
-COPY instructor/fixtures/ instructor/fixtures/
-# Phase 04: the approved corpus and skill catalog (nothing else from the repository).
 COPY knowledge/ knowledge/
 COPY skills/ skills/
-RUN useradd --system --uid 10002 --no-create-home --shell /usr/sbin/nologin lab \
-    && mkdir -p /data && chown 10002:10002 /data
-USER 10002
-VOLUME ["/data"]
+COPY instructor/fixtures/ instructor/fixtures/
+RUN groupadd --system --gid 10002 lab \
+    && useradd --system --uid 10002 --gid 10002 --no-create-home --shell /usr/sbin/nologin lab \
+    && mkdir -p /data && chown 10002:10002 /data && chmod 0700 /data
+# Non-root by default. On Railway the volume is mounted owned by root, so the lab service sets
+# RAILWAY_RUN_UID=0; services.lab.serve then chowns the database directory and drops to 10002
+# before opening the database. No VOLUME instruction: Railway rejects it (volumes are attached
+# in the service settings); compose.yaml declares its own volume.
+USER 10002:10002
 EXPOSE 8000
-HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["/opt/venv/bin/python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status == 200 else 1)"]
-CMD ["/opt/venv/bin/uvicorn", "--factory", "services.lab.main:create_app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-server-header"]
+# Liveness for Docker hosts. Railway uses the service's Healthcheck Path (/healthz) instead.
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["/opt/venv/bin/python", "-c", "import os,sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('PORT', '8000'), timeout=2).status == 200 else 1)"]
+# Binds TASKSPRINT_BIND_HOST (default 0.0.0.0) on $PORT, one worker, migrations once at start.
+CMD ["/opt/venv/bin/python", "-m", "services.lab.serve"]

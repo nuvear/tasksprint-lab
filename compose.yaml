@@ -4,7 +4,8 @@
 #   uv run python scripts/check_stack.py --target local
 # Only the lab is published, and only on 127.0.0.1. The runner sits on an internal
 # network with no published port, no volume, a read-only filesystem and only its
-# transport token. Railway (Phase 05) keeps it on private networking.
+# transport token. Railway (Phase 05) keeps it on private networking (docs/RAILWAY_SETUP.md).
+# Both images start through services.<lab|runner>.serve (PORT, one worker, non-root).
 name: tasksprint-local
 
 services:

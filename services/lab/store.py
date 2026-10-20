@@ -329,38 +329,48 @@ class Store:
             finally:
                 conn.close()
 
-    def migrate(self) -> list[int]:
-        """Apply pending migrations in order; verify checksums of applied ones."""
+    def migrate(self, lock_timeout_s: float = 30.0) -> list[int]:
+        """Apply pending migrations in order; verify checksums of applied ones.
+
+        Runs once per start-up under a safe migration lock (Build Guide 05.5): the
+        whole check-and-apply sequence is ONE ``BEGIN IMMEDIATE`` transaction, so the
+        SQLite reserved lock on the database file serialises concurrent starters (a
+        second process, or an overlapping container) and they apply nothing twice.
+        All pending migrations commit together or not at all.
+        """
         applied_now: list[int] = []
         with self._write_lock:
             conn = self.connect()
             try:
-                conn.execute(
-                    "CREATE TABLE IF NOT EXISTS schema_migrations ("
-                    " version INTEGER PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, applied_at TEXT NOT NULL)"
-                )
-                applied = {r["version"]: r["checksum"] for r in conn.execute("SELECT version, checksum FROM schema_migrations")}
-                known = {v for v, _, _ in MIGRATIONS}
-                if set(applied) - known:
-                    raise RuntimeError("database has migrations newer than this code; refusing to start")
-                for version, name, sql in sorted(MIGRATIONS):
-                    if version in applied:
-                        if applied[version] != _checksum(sql):
-                            raise RuntimeError(f"migration {version} checksum mismatch; refusing to start")
-                        continue
-                    conn.execute("BEGIN IMMEDIATE")
-                    try:
+                conn.execute(f"PRAGMA busy_timeout = {int(lock_timeout_s * 1000)}")
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    conn.execute(
+                        "CREATE TABLE IF NOT EXISTS schema_migrations ("
+                        " version INTEGER PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL,"
+                        " applied_at TEXT NOT NULL)"
+                    )
+                    applied = {r["version"]: r["checksum"]
+                               for r in conn.execute("SELECT version, checksum FROM schema_migrations")}
+                    known = {v for v, _, _ in MIGRATIONS}
+                    if set(applied) - known:
+                        raise RuntimeError("database has migrations newer than this code; refusing to start")
+                    for version, name, sql in sorted(MIGRATIONS):
+                        if version in applied:
+                            if applied[version] != _checksum(sql):
+                                raise RuntimeError(f"migration {version} checksum mismatch; refusing to start")
+                            continue
                         for statement in _split_sql(sql):
                             conn.execute(statement)
                         conn.execute(
                             "INSERT INTO schema_migrations(version, name, checksum, applied_at) VALUES (?,?,?,?)",
                             (version, name, _checksum(sql), utc_now_iso()),
                         )
-                        conn.execute("COMMIT")
-                    except BaseException:
-                        conn.execute("ROLLBACK")
-                        raise
-                    applied_now.append(version)
+                        applied_now.append(version)
+                    conn.execute("COMMIT")
+                except BaseException:
+                    conn.execute("ROLLBACK")
+                    raise
             finally:
                 conn.close()
         return applied_now

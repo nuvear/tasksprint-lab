@@ -17,11 +17,16 @@ REPO = Path(__file__).resolve().parents[2]
 RUNNER_DIR = REPO / "services" / "runner"
 ALLOWED_IMPORTS = {"__future__", "ast", "dataclasses", "hashlib", "hmac", "json", "logging", "os", "re", "time",
                    "typing", "fastapi", "fastapi.responses", "starlette.concurrency"}
+# Phase 05 container entrypoint (serve.py) only: the server process itself, its log
+# configuration and the listening socket. Checked separately below.
+ENTRYPOINT_IMPORTS = {"socket", "sys", "logging.config", "uvicorn"}
 
 
-def runner_imports() -> set[str]:
+def runner_imports(exclude: tuple[str, ...] = ()) -> set[str]:
     names: set[str] = set()
     for path in RUNNER_DIR.glob("*.py"):
+        if path.name in exclude:
+            continue
         for node in ast.walk(ast.parse(path.read_text())):
             if isinstance(node, ast.Import):
                 names |= {a.name for a in node.names}
@@ -32,7 +37,15 @@ def runner_imports() -> set[str]:
 
 def test_runner_imports_only_an_allowlisted_set():
     """No sqlite3, no lab package, no HTTP client, no subprocess, no pickle, no importlib."""
-    assert runner_imports() <= ALLOWED_IMPORTS, runner_imports() - ALLOWED_IMPORTS
+    assert runner_imports(exclude=("serve.py",)) <= ALLOWED_IMPORTS, runner_imports() - ALLOWED_IMPORTS
+    assert runner_imports() <= ALLOWED_IMPORTS | ENTRYPOINT_IMPORTS, runner_imports() - ALLOWED_IMPORTS
+
+
+def test_runner_entrypoint_only_listens():
+    """serve.py binds one listening socket; it never opens outbound connections or files."""
+    text = (RUNNER_DIR / "serve.py").read_text()
+    assert ".connect(" not in text and "create_connection" not in text and "open(" not in text
+    assert "services.lab" not in text
 
 
 def test_runner_never_references_lab_code_or_storage():
