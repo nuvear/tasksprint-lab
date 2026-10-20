@@ -19,6 +19,8 @@ SAMPLE_BODIES = {
     "/v1/app/commands": {"command": "add Sneaky task"},
     "/v1/test-runs": {"candidate_id": "cand_" + "0" * 24},
     "/v1/instructor/actions": {"action": "seed", "workspace_id": "demo-002"},
+    "/v1/knowledge/search": {"query": "release policy"},
+    "/v1/instructor/knowledge/search": {"query": "archived note", "include_archived": True},
 }
 
 
@@ -32,7 +34,8 @@ def business_routes(app):
 
 
 def concrete(path):
-    return path.replace("{candidate_id}", "cand_" + "0" * 24).replace("{test_run_id}", "tr_" + "0" * 24)
+    return (path.replace("{candidate_id}", "cand_" + "0" * 24).replace("{test_run_id}", "tr_" + "0" * 24)
+            .replace("{name}", "release-and-recover").replace("{version}", "1.0.0"))
 
 
 def snapshot(db):
@@ -106,3 +109,13 @@ def test_disabled_role_cannot_authenticate(db_path):
 def test_docs_and_openapi_are_not_exposed(seeded):
     for path in ("/docs", "/redoc", "/openapi.json"):
         assert seeded.client.get(path).status_code == 404
+
+
+def test_mcp_endpoint_authenticates_itself_outside_the_route_table(seeded):
+    """/mcp is not an APIRoute; it must still refuse missing/invalid/non-agent tokens."""
+    body = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+    for hdrs in ({"X-TaskSprint-Workspace": "demo-001"},
+                 {**headers(None), "Authorization": f"Bearer {INVALID_TOKEN}"}):
+        assert seeded.client.post("/mcp", json=body, headers=hdrs).status_code == 401
+    for role in ("instructor", "human_approver", "evaluator"):
+        assert seeded.client.post("/mcp", json=body, headers=headers(role)).status_code == 403
