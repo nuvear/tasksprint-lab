@@ -45,10 +45,61 @@ These notes record what happened in the Phase 11 rehearsal (`docs/PHASE11_REPORT
   rollback, Operations may call the rolled-back candidate "faulty"; the incident was the instructor drill. TS-30 `list`
   is the authority for task records.
 
+## Timed plan (Phase 12, 20 Oct 2026, frozen workshop-v1)
+
+How the times were measured:
+* "Model/system time" comes from the Phase 11 rehearsal (lab event timestamps), the Phase 12 Playground checks, and
+  the Phase 12 qualification run `77b8ed` (trial latency).
+* The Phase 12 "lab span" runs from run creation to the last tool event. It excludes the final answer's generation.
+* The full release chain was not re-run in Phase 12. The deploy and rollback rows reuse Phase 11 numbers, minus the
+  two removed "second request" turns.
+* The remainder of each slot is narration, inspection and discussion.
+
+| Slot | Scene | Measured model/system time | Narration + inspection | Buffer |
+|---|---|---|---|---|
+| 00–08 (8) | TS-30 `status`, `list`; goal | instant (≤ 0.2 s per command) | 6 min | 2 min |
+| 08–18 (10) | Story from the brief; TS-90 `confirm scope ST-001` | ≈ 35 s (P11); P12 lab span 26 s. Scope: instant | 7 min (citations, RAG) | 2 min |
+| 18–28 (10) | `Inspect the starter…`; prepared bounded-stop | Inspect: P12 lab span 3 s (8.3K tokens). Bounded stop (AE-06): 9.7–12.2 s | 7 min (MCP schemas, trace) | 2.5 min |
+| 28–38 (10) | Memory prompt; new session `Where are we…` | P12 lab spans 2 s + 2 s. Fresh-session turn (AE-08): 9.1–10.0 s | 7.5 min (state vs memory) | 2 min |
+| 38–53 (15) | `Implement the agreed completion story…` | P11 ≈ 70 s; P12 lab span 51 s (Dev + QA + stage transitions) | 11 min (skill load, diff, hash) | 3 min |
+| 53–66 (13) | TS-90 `load fixture faulty`; assess; one repair; retest | P11 ≈ 40 s + ≈ 65 s. AE-03 chain: 30.8–82.9 s | 9 min (failing assertion, repair) | 2 min |
+| 66–78 (12) | Three live class cases; wider report | AE-04 9.5–23.6 s, AE-05 12.9–17.3 s, AE-07 11.6–15.7 s (≈ 40–60 s for three) | 9 min (report, denominators) | 2 min |
+| 78–90 (12) | A2A assessment (readiness → plan in ONE Operations request) | P11 A2A ≈ 30 s. TS-20 one-request plan: P12 lab span 4 s (12-06). The second request (P11 ≈ 15 s) is no longer needed | 9 min (Task/artifact IDs, gates) | 2.5 min |
+| 90–101 (11) | Bypass refused; human review + Approve; execute; TS-30 `complete`, `list` | Bypass ≈ 12 s; execute ≈ 15 s; TS-30 instant | Approval 1–5 min (P11) + 3 min | 2 min |
+| 101–113 (12) | Drill; investigation + rollback plan (one request); Approve; rollback; drill off | Investigation ≈ 25 s (P11), now including the plan (the P11 13 s second request is removed); rollback ≈ 20 s; drill instant | Approval ≈ 1 min + 8 min | 2 min |
+| 113–120 (7) | Retrospective | P12: 14.6 s (27.9K tokens, Playground header) | 5 min | 1.5 min |
+
+**Model latency.**
+* A single-agent turn takes 2–25 s.
+* Delegated chains (Coordinator → specialists) take 30–85 s. The longest observed was AE-03 at 82.9 s, inside the
+  180 s parent deadline.
+* All model time in a class is about 6–8 minutes of the 120. Everything else is human pace.
+
+**If behind:** shorten narration first. Then use one live class case instead of three (show the qualification
+report for the rest). Then show the AE-06 report instead of the prepared bounded-stop test. Never disable a budget,
+approval, stop control or test.
+
+## Observed prompt wording (Phase 12 changes, supersede the two "second request" notes above)
+
+* **Operations budget 12, one-request sequence.** TS-20 now runs: readiness → plan in one request (deploy target =
+  the assessed candidate; rollback target = `rollback.target_candidate_id` from readiness).
+  * Deploy was verified live in one request (`12-06`).
+  * The one-request rollback path is unit-tested but was **not** live-rehearsed.
+  * If Operations returns no rollback plan, use the Phase 11 rollback prompt above as the fallback.
+* **Story stages now advance** (`12-03`, `12-04`). The Coordinator has 8 actions per turn. If an implement turn stops
+  at IN_QA, ask: `QA report <tr_ID> passed for the ST-001 candidate. Record the verified story stage.`
+* **The faulty-fixture assessment comes after APP_VERIFIED.** The story cannot re-enter IN_QA, so the Coordinator may
+  report the transition refusal: narrate it as the state machine working. In that scene the one-repair limit is enforced by the
+  harness's repair limit (Bounded Toolset), not by the story's repair_count.
+* **New Playground session.** Click **+** and check that the header reads "New Session N" before typing. Otherwise the
+  message lands in the Default Session (observed once in Phase 12).
+* **Skill load.** Once, Operations asked for `release-and-recover` with version "1" (SKILL_NOT_FOUND) and still
+  planned correctly from readiness. If it is asked about this, the skill's version is 1.0.0.
+
 ## Pre-class check
 
-Run the delivered doctor script. Preview/reset demo-001 through the protected
-control. Verify v0 and two synthetic task IDs, model connectivity, MCP calls,
+Run `scripts/doctor.py`, then reset demo-001 (`scripts/reset_demo.py … --dry-run`, then `--confirm demo-001`,
+or TS-90), then `scripts/doctor.py --no-model-probe` (must be PASS). Verify v0 and two synthetic task IDs, model connectivity, MCP calls,
 Operations A2A availability, approval UI, clean drill state, no reusable leftover
 approval, the frozen manifest and the emergency stop. Keep secrets off the projection.
 

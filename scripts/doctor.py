@@ -35,7 +35,8 @@ from pathlib import Path
 import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import run_agent_evals as rae  # noqa: E402  (read-only reuse of the harness's manifest builder and clients)
+import run_agent_evals as rae  # noqa: E402
+from import_flows import MAX_ITERATIONS, MAX_ITERATIONS_BY_FLOW  # noqa: E402  (read-only reuse of the harness's manifest builder and clients)
 from lf_common import (DEFAULT_BOOTSTRAP_FILE, DEFAULT_LAB_URL, DEFAULT_LANGFLOW_URL, DEFAULT_TOKENS_FILE,  # noqa: E402
                        REPO_ROOT, SetupError, read_env, redact_text)
 
@@ -180,11 +181,13 @@ def main(argv: list[str] | None = None) -> int:
         provs = sorted({x.get("provider") for x in pol.get("registered_providers", [])})
         d.r("Anthropic" in provs, f"Anthropic is a registered provider ({len(provs)} registered; the live turn below "
                                   f"is the reachability proof)")
-        idents = [rae.flow_identity(lf.get(f'/api/v1/flows/{by[n]["id"]}')).get("model") or {}
-                  for n in FLOW_NAMES if n not in ("TS-30 To-do App", "TS-90 Instructor Console")]
-        models = sorted({f"{m.get('provider')}/{m.get('model_name')} (max_iterations {m.get('max_iterations')})"
-                         if isinstance(m, dict) else str(m) for m in idents})
+        agent_flows = [n for n in FLOW_NAMES if n not in ("TS-30 To-do App", "TS-90 Instructor Console")]
+        idents = {n: rae.flow_identity(lf.get(f'/api/v1/flows/{by[n]["id"]}')).get("model") or {} for n in agent_flows}
+        models = sorted({f"{m.get('provider')}/{m.get('model_name')}" for m in idents.values() if isinstance(m, dict)})
         d.r(len(models) == 1 and "None" not in models[0], f"Agent model on all five agent flows: {models}")
+        iters = {n.split()[0]: (m.get("max_iterations") if isinstance(m, dict) else None) for n, m in idents.items()}
+        want = {n.split()[0]: MAX_ITERATIONS_BY_FLOW.get(n, MAX_ITERATIONS) for n in agent_flows}
+        d.r(iters == want, f"Agent Max Iterations {iters} (expected {want})")
         if a.no_model_probe:
             print("NOTE live model probe skipped (--no-model-probe): model reachability NOT verified")
         else:

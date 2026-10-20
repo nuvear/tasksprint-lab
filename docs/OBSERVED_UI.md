@@ -323,3 +323,24 @@ to expose it.", **Address** URL/curl and **Customize card** (not saved).
 unsaved client changes; navigating away raised the browser's "Leave site?" dialog, which was discarded.
 The server copies were unchanged (`import_flows.py --dry-run` keep ×7).
 
+
+## Phase 12 additions — fixed flows, Playground sessions, timing (20 Oct 2026, 23:02–23:44 UTC)
+
+**Playground header.** Opening a flow and clicking **Playground** (top right, next to **Share**) shows a left
+**Sessions** list: **Default Session**, then **New Session N** and the evaluation sessions (`ae-ae-0X-rN-<tag>`).
+The **+** beside **Sessions** creates the next **New Session N**, and the right pane's title shows it. Typing before
+that title appears sent one message to the **Default Session** (`12-06`).
+
+**Run header.** Each AI reply starts with **Finished in** and the token count and duration, e.g. `21.2K | 10.6s`.
+The tool steps are listed in capitals (**GET SPRINT STATE**, **READ TEST REPORT**, **TRANSITION STORY**), each with
+a duration (`12-04`). The canvas Agent node shows the last run's token count and seconds (for example `27.9K | 14.6s`).
+
+**TS-90 reply.** `confirm scope ST-001` → "Scope confirmed for ST-001 (criteria v1, revision 2, stage PLANNED).
+Human Product Owner scope confirmation recorded by the protected control. …" (`12-02`).
+
+**Bounded Toolset node.** The advanced input **Max tool actions per invocation** now reads, in its info text,
+"Clamped to the role's lab cap (operations 12, every other role 8)". TS-20 holds 12; the other flows hold 8.
+
+**Editor state.** As in Phase 09, after Playground use the editor holds unsaved client changes. Navigating to another
+flow raises "Leave site?". It was discarded every time. `scripts/phase12_flows.py --dry-run` (keep ×2) and
+`scripts/verify_flows.py` (PASS) confirmed the server copies were unchanged. **Do not save the canvas during class.**

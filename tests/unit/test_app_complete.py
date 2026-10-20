@@ -161,3 +161,19 @@ def test_complete_events_record_runner_and_hash(seeded):
     ev = next(e for e in events if e["action"] == "app.complete")
     assert ev["outcome"] == "FEATURE_UNAVAILABLE"
     assert ev["details"]["runner"].startswith("tasksprint-runner/") and len(ev["details"]["artifact_sha256"]) == 64
+
+
+def test_add_after_candidate_activation_creates_one_new_record(seeded):
+    """APP-05 (Phase 12): after a candidate is active, `add` creates exactly one new record with a unique server ID
+    and leaves every existing record unchanged."""
+    seeded.activate(seeded.load_fixture("reference_complete"))
+    assert seeded.cmd("complete T001").json()["code"] == "COMPLETED"
+    before = {t["id"]: t for t in tasks(seeded)}
+    body = seeded.cmd("add Prepare the retrospective").json()
+    assert body["ok"] is True, body
+    after = {t["id"]: t for t in tasks(seeded)}
+    new = set(after) - set(before)
+    assert len(new) == 1 and len(after) == len(before) + 1
+    nid = new.pop()
+    assert nid not in before and after[nid]["title"] == "Prepare the retrospective" and after[nid]["completed"] is False
+    assert {k: after[k] for k in before} == before  # T001 stays completed; T002 unchanged

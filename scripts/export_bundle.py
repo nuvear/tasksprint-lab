@@ -16,6 +16,10 @@ Read-only against Langflow. Steps:
    then `import_flows.remap_run_flows` / `remap_a2a_peer` are applied against this instance's flow list. They
    must restore exactly the live helper IDs. Variable bindings must be NAMES that exist as Langflow globals.
 5. Comparison with the committed `flows/*.json` (reported, never overwritten).
+6. (Phase 12, scripts/bundle_package.py) component sources, prompts, skills, corpus, contracts, lockfile,
+   Dockerfiles, redacted reports, observed UI labels, runbook, versions.json (incl. migrations), RESET.md and a
+   private configuration checklist (names only); then a credential-pattern scan and an exact-value scan of every
+   bundle file against .local/railway/*.env (values never printed). No fonts, fixtures or grader source.
 
 Then run `import_flows.py --dry-run --flows-dir DIR/flows`: every flow must report `OK keep` (identical wiring,
 bindings and settings), i.e. a re-import would change nothing. A real re-import onto this instance is NOT done:
@@ -35,6 +39,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import import_flows as imf  # noqa: E402
+import bundle_package  # noqa: E402
 from lf_common import DEFAULT_BOOTSTRAP_FILE, DEFAULT_LANGFLOW_URL, REPO_ROOT, SetupError, check, langflow_client  # noqa: E402
 
 EXTRA_PATTERNS = [re.compile(p) for p in (r"(?i)x-api-key\"?\s*[:=]\s*\"[A-Za-z0-9_\-]{20,}",
@@ -153,6 +158,19 @@ def main(argv: list[str] | None = None) -> int:
     (out / "bundle_manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"INFO manifest {out.relative_to(REPO_ROOT)}/bundle_manifest.json sha256 "
           f"{hashlib.sha256((out / 'bundle_manifest.json').read_bytes()).hexdigest()[:16]}")
+    gate = None
+    try:  # the qualified-manifest gate (evaluator credential, read-only); optional for an offline package
+        import httpx
+        from lf_common import DEFAULT_LAB_URL, DEFAULT_TOKENS_FILE, read_env
+        tok = read_env(DEFAULT_TOKENS_FILE).get("TS_EVALUATOR_TOKEN", "")
+        r = httpx.get(DEFAULT_LAB_URL + "/v1/agent-system-manifests/qualified", timeout=30,
+                      headers={"Authorization": f"Bearer {tok}", "X-TaskSprint-Workspace": "demo-001"})
+        if r.status_code == 200:
+            gate = {k: r.json().get(k) for k in ("status", "agent_manifest_id", "manifest_sha256", "report_id",
+                                                  "qualified_at", "current_lab_side_sha256", "last_verified_at")}
+    except Exception as e:  # noqa: BLE001
+        print(f"NOTE qualified-manifest gate not read ({type(e).__name__}); versions.json records null")
+    fails += bundle_package.build(out, version, known_vars, gate, scan)
     print(f"NEXT uv run --frozen --no-dev python scripts/import_flows.py --dry-run --flows-dir {flows_dir.relative_to(REPO_ROOT)}")
     print(f"SUMMARY export_bundle: {'PASS' if not fails else 'FAIL'} ({fails} failed)")
     return 1 if fails else 0

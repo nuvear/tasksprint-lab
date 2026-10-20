@@ -1,33 +1,24 @@
 # Build status
 
-**Last updated:** 20 October 2026, about 23:25 UTC (Phase 12 in progress, STOPPED for a decision).
-**Phase 12 (branch `feature/phase-12-freeze`, fast-forwarded to origin/main `17e0560`; not pushed):**
-* **Lab:** 0.8.0 redeployed from `b5d5100` (Raj approved the push). Deployed lab side `891e75f3…`, equal to this
-  checkout.
-* **Flows:** TS-20 and TS-10 were updated in place by `scripts/phase12_flows.py`, with IDs, edges, helpers and A2A
-  publication kept. TS-20: Bounded Toolset 1.2.0, max_actions 12, Agent Max Iterations 12, new `operations.md`.
-  TS-10: Bounded Toolset 1.2.0 and the new `coordinator.md`. The coordinator prompt was refined once after the
-  Playground check: no candidate_id when leaving IN_QA. `flows/` was re-exported, and `verify_flows.py` passes.
-* **Playground checks (12-01…12-05):**
-  * TS-10 kept ST-001 in PLANNED before the scope confirmation, then PLANNED → IN_DEVELOPMENT → IN_QA
-    (`cand_9596cb51…`, `tr_664446a7…` pass 27/27).
-  * IN_QA → APP_VERIFIED was first refused UNEXPECTED_FIELD (the candidate_id was resent). After the refinement it
-    went to APP_VERIFIED (revision 5) in 3 actions.
-  * TS-20 used 3 actions: skill load, then readiness (BLOCKED: manifest stale), and no plan.
-* **Requalification `a01c0e`:** report `aer_303d30d8…`, manifest `asm_3d35c2f1…`, **NOT_QUALIFIED**: 22/24 passed,
-  0 critical. AE-05 failed r1 and r3 on `no_fabricated_pass`.
-  * Diagnosis: QA correctly reported BLOCKED (2× TOOL_UNAVAILABLE, no test run). It quoted, as "conflicting
-    evidence", the Operations `release.readiness` event from the preceding AE-04 trial (`application_tests: PASS`,
-    which is true for `tr_664446a7…`).
-  * AE-04's Operations now calls readiness first (the new sequence), so this event is new in the log. The AE-05
-    grader's PASS_CLAIM regex treats that quotation as a pass claim: a grader false positive caused by the changed
-    trajectory.
-  * STOPPED to ask before any further full run.
-* **Not yet done:** Tasks 2–5 (timing, bundle, docs, freeze, pre-class check). The TS-20 READY → plan check needs a
-  qualified manifest.
-* **Spend:** ≈ USD 1.64 for this run (544 073 input / 54 937 output tokens, Langflow-reported). This is an estimate
-  from the Phase 10 dated price table: USD 2 / 10 per million, from Langflow catalog metadata, not verified.
-**Current gate:** **GATE 11 PASS** (`docs/PHASE11_REPORT.md`) on branch `feature/phase-11-rehearsal` (not pushed;
+**Last updated:** 20 October 2026, about 23:55 UTC (Phase 12 executed; **FINAL**).
+**Current gate:** **GATE 12 PASS, with the NOT RUN / NOT DONE items stated** (`docs/PHASE12_REPORT.md`,
+`docs/ACCEPTANCE_SIGNOFF.md`). Frozen as **`workshop-v1`** (`docs/FROZEN_VERSION.md`). Branch
+`feature/phase-12-freeze` (on top of origin/main `17e0560`, not pushed).
+* **Lab:** 0.8.0 (per-role action cap: operations 12, others 8; readiness returns the baseline candidate ID), lab side
+  `891e75f3…`.
+* **Flows:** TS-20/TS-10 updated in place. Bounded Toolset 1.2.0, TS-20 max_actions 12 and Max Iterations 12; new
+  coordinator and operations prompts.
+* **Qualified manifest `asm_7ec31ba78e6d8f6d26f4bfb4`** (report `aer_8ce88b1b…`, run `77b8ed`, 24/24, 0 critical).
+  * It came after `a01c0e` NOT_QUALIFIED (22/24): an AE-05 grader false positive, fixed in the protected grader with
+    regression tests (PHASE12_REPORT §3).
+* **Class start state:** generation 20, v0 at revision 2, T001/T002, nothing pending. `doctor.py` PASS 18/18
+  (23:50Z); the model was reachable (23:47Z).
+* **Spend:** ≈ USD 3.61 for both runs (estimate, unverified Phase 10 price table).
+* **Remaining human action:** revoke `tasksprint-bootstrap`.
+* **Not run:** the full release chain on the fixed flows, a live one-request rollback, a fresh-instance import, a
+  Human Input restart durability test, Docker Compose.
+
+**Previous gate:** **GATE 11 PASS** (`docs/PHASE11_REPORT.md`) on branch `feature/phase-11-rehearsal` (not pushed;
 lab 0.7.0 unchanged, lab side `d48dd41e…`). The full release and incident rehearsal ran from app state.
 * **Start:** reset to generation 11 (v0, T001/T002).
 * **Story and code:** live story ST-001 with human scope confirmation. Live candidate `cand_47ed17ab…` passed
@@ -46,6 +37,13 @@ lab 0.7.0 unchanged, lab side `d48dd41e…`). The full release and incident rehe
   not advanced).
 
 GATE 10: `docs/PHASE10_REPORT.md`.
+**Live-instance changes in Phase 12:**
+* Lab 0.8.0 redeployed (orchestrator, Raj-approved push).
+* TS-20 and TS-10 updated in place (IDs and publication unchanged).
+* Lab demo-001: resets 13 → 20 with exports; reports `aer_303d30d8…` and `aer_8ce88b1b…` with their manifests;
+  Playground and evaluation sessions; one deploy plan `plan_ef3a06a8…` (never approved, cancelled by the reset).
+* No change to globals, MCP servers, API keys, Railway configuration, the Langflow service or Postgres.
+
 **Live-instance changes in Phase 11:** none to flows, globals, MCP servers, keys or Railway (attested identical
 throughout). Lab `demo-001`: resets 10 → 11 → 12 → 13 with exports `exp_639abe5f…`, `exp_d3dbb9b6…` and `exp_21e8b30d…`.
 Also, as listed in PHASE11_REPORT §1: story ST-001 (since reset away), 1 new candidate, 3 test runs, 1 A2A exchange,
