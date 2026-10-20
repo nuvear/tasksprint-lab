@@ -64,7 +64,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dir", default=str(REPO_ROOT / ".local"),
                         help="target directory for the private files (default: <repo>/.local)")
     parser.add_argument("--db-path", default=None,
-                        help="TASKSPRINT_DB_PATH to record in lab.env (default: <dir>/tasksprint.sqlite3)")
+                        help="TASKSPRINT_DB_PATH to record in lab.env (default: <dir>/tasksprint.sqlite3, "
+                             "written repository-relative when <dir> is inside the repository)")
     parser.add_argument("--workspaces", default="demo-001",
                         help="comma-separated designated demo workspaces (default: demo-001)")
     parser.add_argument("--dry-run", action="store_true", help="show what would be created; write nothing")
@@ -78,7 +79,14 @@ def main(argv: list[str] | None = None) -> int:
         print("Existing credentials are never overwritten. Move them aside deliberately if you intend to rotate.",
               file=sys.stderr)
         return 3
-    db_path = args.db_path or str(target / "tasksprint.sqlite3")
+    if args.db_path:
+        db_path = args.db_path
+    else:
+        default_db = target / "tasksprint.sqlite3"
+        try:
+            db_path = str(default_db.relative_to(REPO_ROOT))  # portable across machines
+        except ValueError:
+            db_path = str(default_db)
 
     if args.dry_run:
         print(f"DRY RUN: would create {token_path} and {lab_path} (mode 0600).")

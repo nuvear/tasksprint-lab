@@ -84,6 +84,8 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
     db_path = source.get("TASKSPRINT_DB_PATH", "").strip()
     if not db_path:
         raise ConfigError("TASKSPRINT_DB_PATH is required")
+    if db_path != ":memory:" and not Path(db_path).is_absolute():
+        db_path = str(REPO_ROOT / db_path)  # relative paths are repository-relative, not CWD-relative
 
     hashes: dict[str, str] = {}
     for role, var in ROLE_HASH_VARS.items():

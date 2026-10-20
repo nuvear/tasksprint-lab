@@ -54,3 +54,9 @@ def test_failed_write_rolls_back_entirely(seeded):
                          " VALUES ('demo-001','T900','partial',0,1,'x','x')")
             raise LabError(409, "TEST", "abort")
     assert "T900" not in seeded.cmd("list").json()["message"]
+
+
+def test_relative_db_path_is_repository_relative():
+    from services.lab.config import REPO_ROOT, load_settings
+    s = load_settings({"TASKSPRINT_DB_PATH": ".local/tasksprint.sqlite3"})
+    assert s.db_path == str(REPO_ROOT / ".local" / "tasksprint.sqlite3")
