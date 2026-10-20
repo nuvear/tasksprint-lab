@@ -1,8 +1,9 @@
 # Build status
 
-**Last updated:** 20 October 2026, about 05:00 UTC (Phase 03, local build).
-**Current gate:** GATE 03 evidence produced locally (Compose step BLOCKED: no Docker);
-awaiting owner review. GATE 02 was produced earlier the same day.
+**Last updated:** 20 October 2026, about 05:30 UTC (Phase 04, local build).
+**Current gate:** GATE 04 evidence produced locally (real MCP SDK client against the lab;
+Langflow MCP wiring BLOCKED until the lab is deployed); awaiting owner review.
+GATE 03 (Compose step BLOCKED: no Docker) and GATE 02 were produced earlier the same day.
 Phase 01 (model connection, component templates) is not recorded as complete in
 this file; Phase 02 is local-only and does not depend on it.
 **Live-instance changes made in Phases 00 and 02:** none. No flows, keys, variables,
@@ -114,17 +115,56 @@ or changed; manual checks used temporary credentials and a temporary database.
 | `docker compose up --build -d` | **BLOCKED** | Docker not installed on the owner VM |
 | Gate command `uv run pytest -q tests/unit tests/security tests/integration` | TESTED: **345 passed** | 245 unit + 90 security + 10 integration, 5.90 s, 0 failed, 0 skipped |
 
+## Phase 04 results (20 Oct 2026, owner VM, local only)
+
+Full detail: `docs/PHASE04_REPORT.md`. Branch `feature/phase-04-mcp` (from 01d5ee1).
+Nothing in Langflow, Railway or `nuvear/langflow-railway` was touched.
+
+| Item | Status | Evidence |
+|---|---|---|
+| MCP server, Streamable HTTP, `/mcp` | BUILT LOCALLY, TESTED (real SDK client) | mcp 1.30.0 (Langflow 1.12 pins `mcp>=1.30,<2`); negotiated 2025-11-25; stateful sessions, JSON responses |
+| MCP auth scheme | TESTED | `Authorization: Bearer <role token>` + `X-TaskSprint-Workspace`; optional `X-TaskSprint-Run`; 401/403/404/421 cases tested |
+| Role-filtered tools/list (19 tools; coord 7, PO 2, dev 6, qa 5, ops 12, app 2) | TESTED | `test_tools_list_is_role_scoped`, smoke script; derived from `auth.PERMISSIONS` |
+| Hidden tool direct call denied (SEC-02) | TESTED | `TOOL_NOT_AVAILABLE` + `mcp.tool_denied` event; no state change |
+| tools/call, errors, timeout, cleanup (MCP-01..03) | TESTED locally | persistent results; structured `isError`; server deadline and client timeout against a hung runner; DELETE → 404 |
+| Per-call run budget (A9 subset) | TESTED | 8 per run; `BUDGET_EXHAUSTED` recorded; header run or server-created per-session run |
+| Readiness / plans / execution tools | LISTED for operations, `NOT_IMPLEMENTED` | Phases 08–09; no stubbed success |
+| Retrieval over `knowledge/` only (FTS5 bm25, approved+effective filter, top 3, citations, abstention) | TESTED | 4 documents / 15 chunks, hashes = kit checksums; archived note excluded; retention passage cited; instructor-only archived view |
+| Skill catalog, `skill_loaded` events, no added authority | TESTED | developer loads release-and-recover yet plan/execute stay denied |
+| `docs/CANDIDATE_GRAMMAR.md` + proposed `implement-todo-change` 1.1.0 | WRITTEN; SKILL.md NOT CHANGED | owner approval needed (report) |
+| Langflow MCP Tools component ↔ lab | **BLOCKED** | lab not deployed (Phase 05); header/Credential binding not yet observed |
+| Gate command `uv run pytest -q tests/unit tests/security tests/integration tests/protocol` | TESTED: **422 passed** | 278 unit + 91 security + 10 integration + 43 protocol, 16.29 s, 0 failed, 0 skipped |
+
+## Phase 01 results (20 Oct 2026, live instance, owner's Chrome)
+
+Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Model Providers (Anthropic, OpenAI) | OWNER-REPORTED configured; OBSERVED in Agent dropdown | `screenshots/01-05-model-dropdown.png` |
+| Bootstrap Langflow API key `tasksprint-bootstrap` | OWNER-REPORTED | Value never seen |
+| Plain model response via Agent | **TESTED** | `TS-00 Connection Check` (3f476c53-e39f-4157-8f73-5e488a0a43e9), model `claude-sonnet-5-5` (Anthropic). Reply `TaskSprint model connection is working.`, 594 tokens, 2.0 s (`01-09`, trace `01-20`) |
+| Tool calling | NOT RUN | Phase 04/06 |
+| Component catalog | OBSERVED | Agent, A2A Agent, Human Input, Run Flow (Beta), Chat I/O, Prompt Template present; **MCP Tools absent** until an MCP server is registered |
+| Template flow `TS-00T Templates` | OBSERVED (built, not run) | 0685ac65-234e-4752-bf76-ba45860e74be |
+| Sanitized templates | PARTIAL | `langflow/templates/*.partial.json`: structural captures from `GET /api/v1/flows/{id}`; component source replaced by module + code_hash; not importable |
+| UI export | OBSERVED (dialog only) | Not downloaded; needs owner |
+| Export → re-import round trip | **NOT TESTED** | Proxy: UI **Duplicate** ran OK (`01-31`); duplicate `ed883180-37ff-47ff-be69-49d7e9cebaaa` left for owner to delete |
+| Credential scan of captures | **TESTED: none found** | Secret fields `api_key` all empty |
+| A2A server publishing UI | OBSERVED, disabled | Banner names `LANGFLOW_A2A_ENABLED=true` (now verified on 1.12.5) |
+| A2A readiness | NOT CLAIMED | Phase 08 |
+
 ## Future phases
 
 | Item | Status | Phase |
 |---|---|---|
-| Model connection (TS-00) and sanitized component templates | NOT RUN | 01 |
+| Model connection (TS-00) and sanitized component templates | TESTED (model); PARTIAL (templates); round trip pending owner export | 01 (see above) |
 | Lab backend Phase 02 subset | BUILT LOCALLY, TESTED | 02 (see above) |
 | Isolated runner, protected app tests | BUILT LOCALLY, TESTED; Compose BLOCKED | 03 (see above) |
-| MCP, retrieval, skills | NOT BUILT | 04 |
+| MCP, retrieval, skills | BUILT LOCALLY, TESTED; Langflow wiring BLOCKED | 04 (see above); wiring 05–06 |
 | Railway services | NOT BUILT | 05 |
-| Live MCP / A2A / HITL protocol tests | NOT RUN | 04–09 |
-| Validated flow exports | NOT BUILT | 01 onward |
+| Live MCP / A2A / HITL protocol tests | MCP: TESTED locally (SDK client ↔ lab), not through Langflow; A2A/HITL NOT RUN | 04–09 |
+| Validated flow exports | PARTIAL (structural captures only) | 01 onward |
 | Application / security / agent evaluations | NOT RUN | 03–11 |
 | Two-hour rehearsal | NOT RUN | 12 |
 
@@ -140,6 +180,9 @@ or changed; manual checks used temporary credentials and a temporary database.
   (internal network, read-only FS, non-root user) is unverified until Compose runs.
 - The owner's `.local/` has no `runner.env` yet; create it with
   `scripts/local_init.py --derive-runner-env` before starting the runner or Compose.
+- Phase 05 must set `TASKSPRINT_MCP_ALLOWED_HOSTS` to the lab's real host names, or every
+  MCP request is refused with 421. Editing `knowledge/*.md` or `SKILL.md` requires a new
+  version, or the lab refuses to start (Phase 04).
 - Never convert OWNER-REPORTED or presence observations into integration PASS.
 - Phase 02 unit/security results are local backend behaviour only; they are not MCP,
   A2A, Langflow or deployment results.
