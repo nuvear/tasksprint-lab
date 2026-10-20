@@ -1,16 +1,13 @@
 # Build status
 
-**Last updated:** 20 October 2026, about 07:20 UTC (Phase 05 build side prepared).
-**Current gate:** Phase 05 build side PREPARED on `main` (Dockerfiles, entrypoints, Railway
-guide, railway check mode); **BLOCKED: image build and deployment pending Raj** (no Docker on
-the build VM; Raj creates the Railway services). GATE 05 not yet evidenced.
-GATE 04 evidence was produced locally earlier the same day (Langflow MCP wiring BLOCKED until
-the lab is deployed); GATE 03 (Compose step BLOCKED: no Docker) and GATE 02 before that.
-Phase 01 (model connection, component templates) is not recorded as complete in
-this file; Phase 02 is local-only and does not depend on it.
-**Live-instance changes made in Phases 00 and 02:** none. No flows, keys, variables,
-providers, MCP servers, Railway variables or deployments were created or changed.
-Phases 02 and 03 did not touch Langflow, Railway or `nuvear/langflow-railway`.
+**Last updated:** 20 October 2026, about 12:05 UTC (Phase 06 executed).
+**Current gate:** **GATE 06 evidence produced** (`docs/PHASE06_REPORT.md`) on branch
+`feature/phase-06-langflow`; two owner decisions open: per-run budget header cannot reach the
+native MCP Tools node (Phase 07 blocker, RUN_EXPIRED observed) and the undocumented `COMPLETED`
+success code. GATE 05 PASSED (`docs/PHASE05_REPORT.md`). GATE 04/03/02/01 earlier the same day.
+**Live-instance changes in Phase 06:** project `TaskSprint`; flows TS-30, TS-01, TS-02, TS-03;
+7 globals (`TASKSPRINT_API_BASE`, six role tokens); 6 MCP servers; Langflow auto-created 6
+`MCP_*` Credential globals and the project MCP server `lf-tasksprint`. Railway untouched.
 
 ## Labels
 
@@ -159,6 +156,24 @@ in Langflow, Railway, Postgres or `nuvear/langflow-railway` was touched; nothing
 | Post-deploy checks 05.5 (HTTPS, 401, persistence after lab redeploy) | **NOT RUN** | `docs/RAILWAY_SETUP.md` step 4 |
 | Gate command `uv run pytest -q tests/unit tests/security tests/integration tests/protocol` | TESTED: **463 passed** | 315 unit + 92 security + 13 integration + 43 protocol, 0 failed, 0 skipped |
 
+## Phase 06 results (20 Oct 2026, live Langflow + deployed lab, owner's Chrome)
+
+Full detail: `docs/PHASE06_REPORT.md`; UI labels: `docs/OBSERVED_UI.md` (Phase 06 section).
+
+| Item | Status | Evidence |
+|---|---|---|
+| Globals 06.1 (Generic + 6 Credential) | **TESTED** | `scripts/import_globals.py --apply` PASS ×7, rerun keep ×7; `06-01` (masked) |
+| MCP header ↔ Credential binding | **TESTED** | `Authorization: Bearer {{TS_<ROLE>_TOKEN}}` resolved (tool counts 2/6/5/2/7/12); globe chip is whole-value only (`06-04`…`06-09`) |
+| Adapters `components/app_console.py` 1.0.1, `run_context.py` 1.0.0 | **TESTED end to end** (compiled by the instance; no unit tests) | TS-30 commands; Run Context `run.create` per invocation |
+| TS-30 To-do App (no LLM): add/list/status/complete→FEATURE_UNAVAILABLE | **TESTED** | events `evt_8702d638…`, `evt_01edc15d…` (actor application) |
+| TS-01 PO retrieval + citations | **TESTED** | `knowledge.search` `evt_626bcfcc…`, `evt_a9ef3145…`, `evt_db33f67a…`; brief v1.0 citations |
+| TS-02 Dev skill load + new candidate | **TESTED** | `skill_loaded` `evt_a08469ed…` (1.1.0); `cand_1c9e49bc8de73e1ba06ab786` sha256 `1c9e49bc…44689e` |
+| TS-03 QA protected suite for that hash | **TESTED** (candidate fails TC-01) | `tr_38d1e08a937945f3346b977b`, runner 0.3.0, suite `051dfb58…` |
+| Identity / impersonation (SEC-02 via Langflow + probes) | **TESTED** | `scripts/phase06_checks.py --probes`: 21 pass, 0 fail |
+| Sanitized exports `flows/{01,02,03,30}_*.json` | **TESTED** (scan clean) | `import_flows.py --export`; re-import onto same instance + run PASS; fresh-instance import NOT RUN |
+| Per-run budget header to MCP Tools | **BLOCKED (design)** | no input handle on MCP Tools Headers; pooled session → `RUN_EXPIRED` after 90 s (`06-27`) — Phase 07 |
+| Isolated `test-specialists` workspace | **NOT AVAILABLE** | allowed workspaces = demo-001 only; checks ran in demo-001; reset list in report |
+
 ## Phase 01 results (20 Oct 2026, live instance, owner's Chrome)
 
 Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
@@ -185,14 +200,19 @@ Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
 | Model connection (TS-00) and sanitized component templates | TESTED (model); PARTIAL (templates); round trip pending owner export | 01 (see above) |
 | Lab backend Phase 02 subset | BUILT LOCALLY, TESTED | 02 (see above) |
 | Isolated runner, protected app tests | BUILT LOCALLY, TESTED; Compose BLOCKED | 03 (see above) |
-| MCP, retrieval, skills | BUILT LOCALLY, TESTED; Langflow wiring BLOCKED | 04 (see above); wiring 05–06 |
-| Railway services | PREPARED (Dockerfiles, entrypoints, guide); image build + deploy BLOCKED pending Raj | 05 (see above) |
+| MCP, retrieval, skills | TESTED through Langflow (Phase 06) | 04, 06 |
+| Railway services | DEPLOYED, GATE 05 PASSED | 05 |
 | Live MCP / A2A / HITL protocol tests | MCP: TESTED locally (SDK client ↔ lab), not through Langflow; A2A/HITL NOT RUN | 04–09 |
-| Validated flow exports | PARTIAL (structural captures only) | 01 onward |
+| Validated flow exports | TS-01/02/03/30 exported + same-instance re-import TESTED; fresh instance NOT RUN | 06, 11 |
 | Application / security / agent evaluations | NOT RUN | 03–11 |
 | Two-hour rehearsal | NOT RUN | 12 |
 
 ## Stop conditions carried forward
+
+- Phase 07 must solve the per-invocation MCP run budget (PHASE06 deviation 1) before relying
+  on harness budgets; otherwise a role's tools return RUN_EXPIRED 90 s after first use until
+  Langflow's pooled MCP session idles out (400 s).
+- Keep TS-90 off the project MCP server `lf-tasksprint` (Phase 09).
 
 - A2A work (Phase 08) requires the owner to approve enabling the server A2A flag and a
   manual Redeploy. The variable name `LANGFLOW_A2A_ENABLED` comes from public docs

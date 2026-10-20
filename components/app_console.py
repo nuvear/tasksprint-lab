@@ -1,6 +1,6 @@
 # TaskSprint App Console: trusted Langflow custom component (Build Guide 06.2/06.3, Architecture A3/A8).
 # Reviewed adapter: one fixed endpoint, deterministic verb check, no model, no code execution.
-# Version 1.0.0. Source of truth: tasksprint-lab/components/app_console.py
+# Version 1.0.1 (1.0.1: Markdown line breaks so the Playground shows one task per line). Source of truth: tasksprint-lab/components/app_console.py
 from __future__ import annotations
 
 import re
@@ -12,7 +12,7 @@ from lfx.custom.custom_component.component import Component
 from lfx.io import MessageInput, MessageTextInput, Output, SecretStrInput
 from lfx.schema.message import Message
 
-ADAPTER_VERSION = "app_console/1.0.0"
+ADAPTER_VERSION = "app_console/1.0.1"
 COMMAND_PATH = "/v1/app/commands"  # fixed; the base URL comes from the TASKSPRINT_API_BASE global
 VERBS = ("add", "list", "complete", "status")
 HELP = "Commands: add <title> | list | complete <ID> | status"
@@ -82,4 +82,4 @@ class TaskSprintAppConsole(Component):
         artifact = (data.get("artifact") or {}).get("sha256") or data.get("active_sha256")
         tail = f"\n[{code}" + (f" | artifact {artifact[:12]}" if artifact else "") + f" | request {rid}]"
         self.status = f"{code} request_id={rid}"
-        return Message(text=f"{msg}{tail}")
+        return Message(text=f"{msg}{tail}".replace("\n", "  \n"))  # Markdown hard line breaks

@@ -130,3 +130,56 @@ Observed in the owner's Chrome while building `TS-00 Connection Check` and
 | Flow-level A2A controls | Rail **Agent** pane, **Serve as an A2A agent** toggle (disabled by server flag) |
 | Global-variable binding syntax in JSON | Still UNKNOWN (no field was bound) |
 | Human Input pause/resume, persistence | Source read only; not executed (Phase 09) |
+
+## Phase 06 additions — globals, MCP servers, MCP Tools, Playground (20 Oct 2026, 11:36–12:05 UTC)
+
+Screenshots `06-01` … `06-28`. Detail and evidence IDs: `docs/PHASE06_REPORT.md`.
+
+- **Global Variables** after `scripts/import_globals.py`: rows `TASKSPRINT_API_BASE` **Generic**
+  (value shown in clear, truncated: `https://tasksprint-lab-pr…`) and `TS_APP_TOKEN`,
+  `TS_COORD_TOKEN`, `TS_DEV_TOKEN`, `TS_OPS_TOKEN`, `TS_PO_TOKEN`, `TS_QA_TOKEN` **Credential**
+  (value `*****`); footer "1 to 13 of 13". (`06-01`) The REST payload the server accepts is
+  `POST /api/v1/variables/ {name, value, type: "Generic"|"Credential", default_fields: []}`;
+  `GET` returns `value: null` plus `has_value` for every row.
+- **Add MCP Server** dialog: title **Add MCP Server**, subtitle **Add and save MCP servers to use
+  across your flows.**, tabs **JSON** (textarea **Paste in JSON config**), **STDIO**,
+  **Streamable HTTP/SSE**. The HTTP tab has **Name***, **Streamable HTTP/SSE URL***, **Headers**
+  (key field **Type key...**, value field **Type a value...** with a **globe** icon, **+** adds a
+  row, **×** removes), **Environment Variables** (key/value, **+**), buttons **Cancel**,
+  **Add Server**. There is no separate transport selector beyond the tabs. (`06-02`, `06-03`)
+- **Header value ↔ global variable — exact mechanism.** The globe opens **Search global
+  variables...** with all variable names (`06-04`); choosing one replaces the whole value with a
+  green chip, e.g. `TS_PO_TOKEN ×` (`06-05`) — a whole-value reference with no room for the
+  `Bearer ` prefix. Typing the text `Bearer {{TS_PO_TOKEN}}` into the value field is kept as text
+  (`06-06`) and is resolved by Langflow at connect time (`{{NAME}}` placeholder, lfx 1.12.5).
+  **This is the binding used for every TaskSprint server.** Saved list: **Added MCP Servers**
+  `tasksprint-product-owner` **2 tools** (`06-08`); after the script, six servers with 2/6/5/2/7/12
+  tools (`06-09`). Reads (`GET /api/v2/mcp/servers/{name}`) return header values masked as
+  `********`.
+- **Flow editor, left rail MCP** (`06-14`): heading **MCP Servers**, one row per server (drag
+  handle, **+** on hover), footer **Add MCP Server**, **Manage Servers**. A project MCP server
+  `lf-tasksprint` appeared automatically after the `TaskSprint` project was created.
+- **MCP Tools node** (dragging a server row onto the canvas creates it, server preselected):
+  fields **MCP Server** (dropdown + refresh), **Tool*** (**Select a tool**) and output
+  **Response** before Tool Mode; hover toolbar **Code | Parameters | Tool Mode | …**. With
+  **Tool Mode** on the node shows **Actions** (tool chips such as `GET_SPRINT_STATE`,
+  `SEARCH_APPROVED_KNOWLEDGE`, "+2 more") and the output **Toolset** (cyan handle), which
+  connects to the Agent **Tools** handle (tooltip "Input type: Tool"). (`06-15`, `06-16`, `06-19`,
+  `06-23`) Serialized: node type `MCP`, output `component_as_tool` (`Tool`), edge target field
+  `tools` type `other`; `template.mcp_server.value = {name, config:{url, verify_ssl, headers}}`
+  where, after save, each header value is the NAME of an auto-created Credential global
+  `MCP_<SERVER>_<HEADER>_<hash>`; `tools_metadata.value` lists the tools.
+- **Custom component with bound variables** (`06-13`): **Role token** shows the green chip
+  `TS_PO_TOKEN ×`; serialized `load_from_db: true`, `value: "TS_PO_TOKEN"`, `password: true`.
+- **Playground with an Agent using MCP tools**: each tool call is a collapsible row with the
+  tool name in capitals and its latency (e.g. `SEARCH APPROVED KNOWLEDGE 105ms`); a failed call
+  reads **ERROR USING GET SPRINT STATE** with a red dot (`06-27`); header **Finished in** with
+  token count and seconds (e.g. 8.1K | 13.2s). Sessions panel lists **Default Session** and any
+  API-supplied `session_id`. (`06-17`, `06-20`, `06-24`)
+- **Unsaved-changes guard:** after a Playground run the editor holds unsaved changes; navigating
+  away is blocked by a "Leave site?" dialog until **Ctrl+S** (toast **Flow saved successfully!**).
+- Loading a flow whose edge handle type is wrong shows a red toast **Some connections were removed
+  because they were invalid:** listing the edge (seen once with a hand-built Chat Output edge of
+  type `str`; correct type is `other`). (`06-10` shows the fixed flow.)
+- Not observed in Phase 06: the custom-component code editor's save button label; the
+  project-creation dialog (project created by API).
