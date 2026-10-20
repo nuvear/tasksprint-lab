@@ -171,7 +171,8 @@ CATALOG: tuple[ToolSpec, ...] = (
     ToolSpec("get_release_readiness", "Compute release readiness from recorded evidence only: candidate integrity, "
              "a passing protected test report for the exact hash, the agent-system manifest, app health and the "
              "current release revision. Optional candidate_id; default is the newest tested candidate. Returns the "
-             "gates, deploy READY/BLOCKED, rollback availability and a readiness_event_id. Not an approval.",
+             "gates, deploy READY/BLOCKED, rollback availability with the recorded healthy baseline's candidate ID "
+             "(rollback.target_candidate_id) and a readiness_event_id. Not an approval.",
              ReadinessQuery, ("GET", "/v1/readiness"), lambda o, c, a: o.readiness(c, a.candidate_id), True),
     ToolSpec("create_release_plan", "Create (or return the identical live) canonical immutable deploy or rollback "
              "plan. The server binds environment demo-production, target and current hashes, expected release "

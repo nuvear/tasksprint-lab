@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from services.lab import clock
-from services.lab.config import RUN_MAX_ACTIONS
+from services.lab.config import RUN_MAX_ACTIONS, RUN_MAX_ACTIONS_BY_ROLE, run_max_actions
 from tests.conftest import headers
 
 
@@ -64,3 +64,23 @@ def test_delegation_depth_is_limited(seeded):
 def test_human_only_roles_cannot_create_agent_runs(seeded):
     for role in ("human_approver", "instructor", "evaluator"):
         assert new_run(seeded, role=role).status_code == 403
+
+
+def test_per_role_action_caps_are_fixed_server_side(seeded):
+    """Phase 12: operations 12, every other role 8; the 24-action tree budget is unchanged."""
+    assert RUN_MAX_ACTIONS == 8 and RUN_MAX_ACTIONS_BY_ROLE == {"operations": 12}
+    for role in ("coordinator", "product_owner", "developer", "qa", "application"):
+        assert run_max_actions(role) == 8
+        r = new_run(seeded, role=role, conversation_id=f"conv-{role}")
+        assert r.status_code == 201 and r.json()["max_actions"] == 8 and r.json()["tree_max_actions"] == 24, role
+    r = new_run(seeded, role="operations", conversation_id="conv-ops")
+    assert r.status_code == 201 and r.json()["max_actions"] == 12 and r.json()["tree_max_actions"] == 24
+    assert new_run(seeded, role="operations", body={"max_actions": 50}).status_code == 422
+
+
+def test_operations_run_stops_after_twelve_actions(seeded):
+    run = new_run(seeded, role="operations", conversation_id="conv-ops-budget").json()["run_id"]
+    for _ in range(12):
+        assert seeded.client.get("/v1/app-health", headers=headers("operations", run=run)).status_code == 200
+    r = seeded.client.get("/v1/app-health", headers=headers("operations", run=run))
+    assert r.status_code == 429 and r.json()["error"]["code"] == "BUDGET_EXHAUSTED"

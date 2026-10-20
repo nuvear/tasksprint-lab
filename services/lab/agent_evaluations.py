@@ -47,8 +47,8 @@ from typing import Any
 
 from .audit import record_event
 from .clock import parse_iso, to_iso, utc_now
-from .config import (REPO_ROOT, RUN_DEADLINE_PARENT_S, RUN_DEADLINE_SPECIALIST_S, RUN_MAX_ACTIONS, RUN_MAX_DEPTH,
-                     RUN_TREE_MAX_ACTIONS)
+from .config import (REPO_ROOT, RUN_DEADLINE_PARENT_S, RUN_DEADLINE_SPECIALIST_S, RUN_MAX_ACTIONS,
+                     RUN_MAX_ACTIONS_BY_ROLE, RUN_MAX_DEPTH, RUN_TREE_MAX_ACTIONS)
 from .store import LabError, require_active_workspace
 
 CASE_SET_VERSION = "tasksprint-agent-cases/1"
@@ -116,7 +116,8 @@ def lab_side() -> dict[str, Any]:
         "mcp_tools": [t["name"] for t in catalog],
         "permissions_sha256": sha256_json(permissions),
         "handoff_contract_sha256": a2a_exchanges.contract_sha256(),
-        "harness_budgets": {"max_actions": RUN_MAX_ACTIONS, "tree_max_actions": RUN_TREE_MAX_ACTIONS,
+        "harness_budgets": {"max_actions": RUN_MAX_ACTIONS, "max_actions_by_role": dict(sorted(RUN_MAX_ACTIONS_BY_ROLE.items())),
+                            "tree_max_actions": RUN_TREE_MAX_ACTIONS,
                             "max_depth": RUN_MAX_DEPTH, "specialist_deadline_s": RUN_DEADLINE_SPECIALIST_S,
                             "parent_deadline_s": RUN_DEADLINE_PARENT_S},
         "case_set_version": CASE_SET_VERSION,

@@ -7,14 +7,16 @@
 # per-invocation budget and deadline, per-call timeouts, delegation depth, one repair cycle and
 # no-progress stopping, and returns structured errors instead of raising. The model cannot change
 # any limit: limits are component inputs, never tool arguments. The lab enforces the same budgets
-# independently (8 actions per run, 24 per run tree, depth 2, 90 s / 180 s deadlines).
+# independently (8 actions per run, 12 for operations since 1.2.0; 24 per run tree, depth 2, 90 s / 180 s deadlines).
 # 1.1.0 (Phase 08): the operations role (TS-20 Production Manager) and, for the coordinator, one fixed A2A
 # delegation `assess_production_release` (the name prompts/coordinator.md uses; it carries
 # the typed assess_release task), which accepts only the TaskSprint A2A Audit adapter's peer tool. The toolset
 # (not the model) builds the typed assess_release payload from contracts/handoff-task.schema.json 1.1, counts
 # the delegation as one action charged to the parent run, allows it once per turn and passes the parent run
 # as the A2A contextId (lineage). The model supplies only the three evidence references.
-# Version 1.1.0. Source of truth: tasksprint-lab/components/bounded_toolset.py
+# 1.2.0 (Phase 12): per-role action caps mirroring the lab's fixed table (operations 12, every other role 8);
+# the flow's max_actions input is clamped to its role's cap, so a flow author still cannot exceed the lab.
+# Version 1.2.0. Source of truth: tasksprint-lab/components/bounded_toolset.py
 from __future__ import annotations
 
 import asyncio
@@ -35,7 +37,10 @@ from lfx.custom.custom_component.component import Component
 from lfx.io import DataInput, DropdownInput, FloatInput, HandleInput, IntInput, MessageTextInput, Output, SecretStrInput
 from lfx.schema.json_schema import create_input_schema_from_json_schema
 
-ADAPTER_VERSION = "bounded_toolset/1.1.0"
+ADAPTER_VERSION = "bounded_toolset/1.2.0"
+# Per-invocation action caps; the same fixed table as services/lab/config.py (RUN_MAX_ACTIONS_BY_ROLE, default 8).
+DEFAULT_MAX_ACTIONS = 8
+ROLE_MAX_ACTIONS: dict[str, int] = {"operations": 12}
 WORKSPACE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
 RUN_RE = re.compile(r"^run_[0-9a-f]{32}$")
 # Fixed per-role allowlist = the lab's Phase 04 visibility matrix. A tool the lab lists but this
@@ -145,7 +150,8 @@ class TaskSprintBoundedToolset(Component):
                          load_from_db=True, advanced=True, info="Bind the Generic global TASKSPRINT_API_BASE."),
         MessageTextInput(name="workspace", display_name="Workspace", value="demo-001", advanced=True),
         IntInput(name="max_actions", display_name="Max tool actions per invocation", value=8, advanced=True,
-                 info="Tool calls plus delegations in one Agent invocation (1-8; the lab caps each run at 8)."),
+                 info="Tool calls plus delegations in one Agent invocation. Clamped to the role's lab cap "
+                      "(operations 12, every other role 8)."),
         FloatInput(name="invocation_timeout_s", display_name="Invocation deadline (s)", value=90.0, advanced=True,
                    info="90 for a specialist, 180 for the coordinator. Never later than the lab run's deadline."),
         FloatInput(name="tool_timeout_s", display_name="Per-call timeout (s)", value=30.0, advanced=True),
@@ -520,7 +526,7 @@ class TaskSprintBoundedToolset(Component):
 
     async def _get_tools(self) -> list:
         base, workspace, token, run = self._config()
-        max_actions = max(1, min(8, int(self.max_actions)))
+        max_actions = max(1, min(ROLE_MAX_ACTIONS.get(self.expected_role, DEFAULT_MAX_ACTIONS), int(self.max_actions)))
         limit_s = max(5.0, min(180.0, float(self.invocation_timeout_s or 90)))
         deadline_at = run.get("deadline_at")
         if isinstance(deadline_at, str):

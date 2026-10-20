@@ -15,8 +15,8 @@ from datetime import timedelta
 from typing import Any
 
 from .clock import parse_iso, to_iso, utc_now
-from .config import (RUN_DEADLINE_PARENT_S, RUN_DEADLINE_SPECIALIST_S, RUN_MAX_ACTIONS, RUN_MAX_DEPTH,
-                     RUN_TREE_MAX_ACTIONS)
+from .config import (RUN_DEADLINE_PARENT_S, RUN_DEADLINE_SPECIALIST_S, RUN_MAX_DEPTH, RUN_TREE_MAX_ACTIONS,
+                     run_max_actions)
 from .store import LabError
 
 
@@ -50,7 +50,7 @@ def create_run(conn: sqlite3.Connection, *, workspace: sqlite3.Row, role: str, c
         " max_actions, actions_used, tree_max_actions, tree_actions_used, deadline_at, status, created_at, updated_at)"
         " VALUES (?,?,?,?,?,?,?,?,?,0,?,0,?,'active',?,?)",
         (run_id, workspace["workspace_id"], workspace["generation"], role,
-         f"{workspace['workspace_id']}:{role}:{conversation_id}", parent_run_id, root, depth, RUN_MAX_ACTIONS,
+         f"{workspace['workspace_id']}:{role}:{conversation_id}", parent_run_id, root, depth, run_max_actions(role),
          tree_max, to_iso(deadline), to_iso(now), to_iso(now)),
     )
     return run_view(conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone())

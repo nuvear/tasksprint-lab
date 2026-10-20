@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from import_flows import MAX_ITERATIONS, MODEL_NAME, PROJECT, TS00_ID, compile_component, digest, edge, node, rid, \
+from import_flows import MAX_ITERATIONS, MAX_ITERATIONS_BY_FLOW, MODEL_NAME, PROJECT, TS00_ID, compile_component, digest, edge, node, rid, \
     secret_hits  # noqa: E402
 from lf_common import DEFAULT_BOOTSTRAP_FILE, DEFAULT_LANGFLOW_URL, REPO_ROOT, SetupError, check, \
     langflow_client  # noqa: E402
@@ -68,7 +68,7 @@ def build_ts20(c) -> dict:
     if tpl["model"]["value"][0]["name"] != MODEL_NAME:
         raise SetupError("TS-00 Agent model is not the expected model")
     tpl["system_prompt"]["value"] = (REPO_ROOT / "prompts/operations.md").read_text(encoding="utf-8").rstrip("\n")
-    tpl["max_iterations"]["value"] = MAX_ITERATIONS
+    tpl["max_iterations"]["value"] = MAX_ITERATIONS_BY_FLOW.get("TS-20 Production Manager", MAX_ITERATIONS)
     tpl["add_calculator_tool"]["value"] = False
     tpl["add_current_date_tool"]["value"] = False
     tpl["api_key"]["value"] = ""

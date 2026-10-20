@@ -44,6 +44,8 @@ PROJECT = "TaskSprint"
 TS00_ID = "3f476c53-e39f-4157-8f73-5e488a0a43e9"
 MODEL_NAME = "claude-sonnet-5-5"
 MAX_ITERATIONS = 8
+# Phase 12: TS-20 runs up to 12 tool actions (the lab operations cap), so its Agent needs 12 iterations.
+MAX_ITERATIONS_BY_FLOW = {"TS-20 Production Manager": 12}
 # file, flow name, kind, prompt file, role credential variable, MCP server
 FLOWS = (
     ("30_todo_app.json", "TS-30 To-do App", "app", None, "TS_APP_TOKEN", None),

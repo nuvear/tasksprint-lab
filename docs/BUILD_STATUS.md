@@ -1,6 +1,17 @@
 # Build status
 
-**Last updated:** 20 October 2026, about 16:55 UTC (Phase 11 executed).
+**Last updated:** 20 October 2026, about 17:20 UTC (Phase 12 in progress).
+**Phase 12 (in progress, branch `feature/phase-12-freeze`, not pushed):** **REDEPLOY NEEDED** before the flows are
+updated. The approved fixes are committed in code: a per-role lab action cap (fixed table in
+`services/lab/config.py`: operations **12**, every other role 8; tree 24, depth 2 and deadlines unchanged);
+`get_release_readiness` returns `release.baseline_candidate_id` and `rollback.target_candidate_id`; Bounded Toolset
+1.2.0 (per-role clamp); TS-20 Agent Max Iterations 12 (`import_flows.MAX_ITERATIONS_BY_FLOW`); a coordinator stage list;
+and a one-request Operations sequence. Lab **0.8.0**, expected lab side **`891e75f30db995f9f8b93970fd6b1a4862163e80ba6b6f0c59e303311aec6031`**
+(was `d48dd41e…`). Its manifest `harness_budgets` adds `max_actions_by_role`. New scripts: `verify_flows.py` and
+`doctor.py` (both PASS live before the change), plus `phase12_flows.py`. It applies the TS-20/TS-10 in-place
+update and refuses unless the deployed lab side equals this checkout's. The live flows are unchanged so far.
+`asm_a8c6a59c…` stays qualified only until the redeploy: the new lab side will invalidate it, which is expected.
+Requalification (3×8) follows the flow update.
 **Current gate:** **GATE 11 PASS** (`docs/PHASE11_REPORT.md`) on branch `feature/phase-11-rehearsal` (not pushed;
 lab 0.7.0 unchanged, lab side `d48dd41e…`). The full release and incident rehearsal ran from app state.
 * **Start:** reset to generation 11 (v0, T001/T002).

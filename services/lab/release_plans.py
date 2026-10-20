@@ -95,6 +95,13 @@ def _latest_tested_candidate(conn: sqlite3.Connection, workspace_id: str, active
     return row["candidate_id"] if row else None
 
 
+def baseline_candidate_id(conn: sqlite3.Connection, workspace_id: str, baseline_sha: str) -> str | None:
+    """The candidate record of the recorded healthy baseline (candidates are unique per workspace and hash)."""
+    row = conn.execute("SELECT candidate_id FROM candidates WHERE workspace_id = ? AND sha256 = ?",
+                       (workspace_id, baseline_sha)).fetchone()
+    return row["candidate_id"] if row else None
+
+
 def baseline_release(conn: sqlite3.Connection, workspace_id: str, baseline_sha: str) -> sqlite3.Row | None:
     return conn.execute(
         "SELECT * FROM releases WHERE workspace_id = ? AND active_sha256 = ? ORDER BY release_revision LIMIT 1",
@@ -163,6 +170,7 @@ def compute_readiness(conn: sqlite3.Connection, workspace_id: str, candidate_id:
     blocking = [g["gate"] for g in gates if g["status"] != "PASS"]
     baseline = baseline_release(conn, workspace_id, ws["baseline_sha256"])
     rollback_available = active["active_sha256"] != ws["baseline_sha256"] and baseline is not None
+    baseline_cand = baseline_candidate_id(conn, workspace_id, ws["baseline_sha256"])
     return {
         "record_type": "release_readiness",
         "policy_version": POLICY_VERSION,
@@ -170,7 +178,7 @@ def compute_readiness(conn: sqlite3.Connection, workspace_id: str, candidate_id:
         "workspace_id": workspace_id, "generation": ws["generation"], "environment": ws["environment"],
         "release": {"active_candidate_id": active["active_candidate_id"], "active_sha256": active["active_sha256"],
                     "release_revision": active["release_revision"], "previous_sha256": active["previous_sha256"],
-                    "baseline_sha256": ws["baseline_sha256"],
+                    "baseline_sha256": ws["baseline_sha256"], "baseline_candidate_id": baseline_cand,
                     "active_is_baseline": active["active_sha256"] == ws["baseline_sha256"]},
         "app_health": {"status": health["status"]},
         "candidate": cand_view,
@@ -178,6 +186,9 @@ def compute_readiness(conn: sqlite3.Connection, workspace_id: str, candidate_id:
         "deploy": {"status": "READY" if not blocking else "BLOCKED", "blocking_gates": blocking},
         "rollback": {"available": rollback_available,
                      "target_sha256": ws["baseline_sha256"] if rollback_available else None,
+                     # Phase 12: the candidate ID to pass to create_release_plan(action rollback), so one
+                     # Operations request can plan the rollback without a hand-supplied ID.
+                     "target_candidate_id": baseline_cand if rollback_available else None,
                      "baseline_evidence_id": baseline["release_id"] if (baseline and rollback_available) else None,
                      **({} if rollback_available else
                         {"reason": "the active artifact is the recorded healthy baseline; nothing to roll back"})},

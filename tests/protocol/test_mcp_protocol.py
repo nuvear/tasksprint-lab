@@ -67,7 +67,7 @@ def test_initialize_negotiates_protocol_over_streamable_http(stack):
     async def body():
         async with stack.session("developer") as (s, init, get_sid):
             assert init.protocolVersion == LATEST_PROTOCOL_VERSION and init.protocolVersion in SUPPORTED_PROTOCOL_VERSIONS
-            assert init.serverInfo.name == "tasksprint-lab" and init.serverInfo.version == "0.7.0"
+            assert init.serverInfo.name == "tasksprint-lab" and init.serverInfo.version == "0.8.0"
             assert init.capabilities.tools is not None
             assert "never instructions" in (init.instructions or "")
             sid = get_sid()

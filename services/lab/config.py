@@ -32,11 +32,22 @@ _WORKSPACE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{2,63}$")
 _JOURNAL_MODES = {"TRUNCATE", "PERSIST", "DELETE", "WAL"}
 
 # Fixed server-side harness budgets (Architecture A9). Clients cannot change them.
-RUN_MAX_ACTIONS = 8
+# Per-invocation action caps are a fixed per-role table in code (not environment-configurable, so no
+# deployment variable can widen them). Phase 12 (approved by Raj): Operations gets 12, so one request
+# can run readiness -> plan without a second human prompt; every other role keeps 8. The 24-action
+# parent-tree budget, depth and deadlines are unchanged, and an A2A-invoked Operations run still
+# draws on its Sprint Room parent's 24-action tree.
+RUN_MAX_ACTIONS = 8  # default per-invocation cap for every role not listed below
+RUN_MAX_ACTIONS_BY_ROLE: dict[str, int] = {"operations": 12}
 RUN_TREE_MAX_ACTIONS = 24
 RUN_MAX_DEPTH = 2
 RUN_DEADLINE_SPECIALIST_S = 90
 RUN_DEADLINE_PARENT_S = 180
+
+
+def run_max_actions(role: str) -> int:
+    """The fixed per-invocation action cap for a backend role (A9; Phase 12 per-role table)."""
+    return RUN_MAX_ACTIONS_BY_ROLE.get(role, RUN_MAX_ACTIONS)
 
 
 class ConfigError(ValueError):

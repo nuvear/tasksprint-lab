@@ -82,12 +82,16 @@ def test_default_limits_match_the_a9_budgets():
         assert m, name
         return m.group(1)
     assert int(default("max_actions")) == config.RUN_MAX_ACTIONS == 8
+    # Phase 12: the component's per-role caps are the lab's fixed table (operations 12, others 8)
+    m = re.search(r"^ROLE_MAX_ACTIONS: dict\[str, int\] = (\{[^}]*\})$", text, re.M)
+    assert m and ast.literal_eval(m.group(1)) == config.RUN_MAX_ACTIONS_BY_ROLE == {"operations": 12}
+    assert re.search(r"^DEFAULT_MAX_ACTIONS = 8$", text, re.M)
     assert int(default("max_depth")) == config.RUN_MAX_DEPTH == 2
     assert float(default("invocation_timeout_s")) == config.RUN_DEADLINE_SPECIALIST_S == 90
     assert float(default("delegation_timeout_s")) == config.RUN_DEADLINE_SPECIALIST_S
     assert int(default("max_repairs")) == 1
     # clamps: the model cannot raise limits; a flow author cannot exceed the lab's caps
-    assert "min(8, int(self.max_actions))" in text and "min(180.0," in text and "min(2, int(self.max_depth))" in text
+    assert "min(ROLE_MAX_ACTIONS.get(self.expected_role, DEFAULT_MAX_ACTIONS), int(self.max_actions))" in text and "min(180.0," in text and "min(2, int(self.max_depth))" in text
 
 
 def test_components_use_no_execution_primitives():
@@ -113,3 +117,23 @@ def test_run_context_creates_child_runs_only_for_server_issued_ids():
     assert 'A2A_SESSION_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:(run_[0-9a-f]{32})$")' \
         in text
     assert text.count("group_outputs=True") == 3
+
+
+def test_coordinator_prompt_lists_exactly_the_legal_story_stages():
+    """Phase 12 fix 2 (Phase 11 D3): the Coordinator names only the lab's stage names."""
+    from services.lab.state import LEGAL_TRANSITIONS
+    text = (config.REPO_ROOT / "prompts" / "coordinator.md").read_text(encoding="utf-8")
+    named = set(re.findall(r"\b[A-Z]{2,}(?:_[A-Z]{2,})+\b|\b(?:PLANNED|CLOSED)\b", text))
+    assert named == set(LEGAL_TRANSITIONS), named ^ set(LEGAL_TRANSITIONS)
+    for a, b in re.findall(r"([A-Z_]{6,}) -> ([A-Z_]{6,})", text):
+        assert b in LEGAL_TRANSITIONS[a], (a, b)
+    assert "never request it" in text and "IN_PROGRESS" not in text
+
+
+def test_operations_prompt_is_one_request_readiness_then_plan():
+    """Phase 12 fix 1: readiness first, then the plan; rollback targets the readiness baseline candidate."""
+    text = " ".join((config.REPO_ROOT / "prompts" / "operations.md").read_text(encoding="utf-8").split())
+    i, j = text.index("call get_release_readiness for the named candidate"), text.index("call create_release_plan with action deploy")
+    assert i < j
+    assert "rollback.target_candidate_id from readiness" in text and "never the active candidate" in text
+    assert "approved=true" in text  # the original authority sentences are kept

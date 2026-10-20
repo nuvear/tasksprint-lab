@@ -176,8 +176,15 @@ def test_rollback_plan_targets_the_recorded_baseline(tested):
     starter = active(lab)
     r = plan(lab, "rollback", starter["candidate_id"])
     assert r.status_code == 409 and r.json()["error"]["code"] == "TARGET_ALREADY_ACTIVE"
+    body = readiness(lab).json()
+    assert body["release"]["baseline_candidate_id"] == starter["candidate_id"]
+    assert body["rollback"]["target_candidate_id"] is None  # nothing to roll back while v0 is active
     lab.activate(ref)  # TRUSTED TEST-ONLY pointer change
-    assert readiness(lab).json()["rollback"]["available"] is True
+    body = readiness(lab).json()
+    assert body["rollback"]["available"] is True
+    # Phase 12: readiness names the recorded healthy baseline's candidate ID, so one Operations request can plan
+    assert body["rollback"]["target_candidate_id"] == starter["candidate_id"] == body["release"]["baseline_candidate_id"]
+    assert body["rollback"]["target_sha256"] == starter["sha256"]
     r = plan(lab, "rollback", ref["candidate_id"])
     assert r.json()["error"]["code"] == "TARGET_ALREADY_ACTIVE"
     faulty = lab.load_fixture("faulty_delete")
