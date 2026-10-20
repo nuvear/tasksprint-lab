@@ -1,15 +1,31 @@
 # Build status
 
-**Last updated:** 20 October 2026, about 16:10 UTC (Phase 10 executed).
-**Current gate:** **GATE 10 PASS** (`docs/PHASE10_REPORT.md`) on branch `feature/phase-10-evals` (not pushed;
-lab redeployed by the orchestrator from `main` = `303f109`, lab 0.7.0, migration 0005). Independent harness
-`scripts/run_agent_evals.py` + protected case set `tests/agent_cases/` (tasksprint-agent-cases/1). Qualification
-report **`aer_3b3fd570e08507bd4a915323` QUALIFIED** (24/24 trials pass, 0 critical, rehearsal evidence) for manifest
-**`asm_a8c6a59cd5b0b619cca37440`** (sha256 `a8c6a59c…1f1a16`); readiness for `cand_29a221e0…` = deploy **READY**
-(no plan created). Release-plan schema 1.2 (deploy binds the qualified manifest); handoff stays 1.1. Four earlier
-attempts (grader/harness defects and one 60 s transport disconnect) are stored NOT_QUALIFIED and disclosed.
-The manifest verification expires after 24 h: run `run_agent_evals.py --attest` before Phase 11 deploys.
-GATE 09: `docs/PHASE09_REPORT.md`.
+**Last updated:** 20 October 2026, about 16:55 UTC (Phase 11 executed).
+**Current gate:** **GATE 11 PASS** (`docs/PHASE11_REPORT.md`) on branch `feature/phase-11-rehearsal` (not pushed;
+lab 0.7.0 unchanged, lab side `d48dd41e…`). The full release and incident rehearsal ran from app state.
+* **Start:** reset to generation 11 (v0, T001/T002).
+* **Story and code:** live story ST-001 with human scope confirmation. Live candidate `cand_47ed17ab…` passed
+  (`tr_e8780e24…`). The labelled `fixture-faulty` failed (`tr_1374141c…`). One repair, `cand_24eb7c0a…`, passed
+  (`tr_06dbad83…`).
+* **Release:** A2A assessment `a2ax_21440032…`, then deploy plan `plan_8b183758…`. The no-approval request was
+  refused. Raj's approval `apr_dd30ee46…`, then activation `rel_1e1e06da…` (revision 1). T001 completed and
+  retained.
+* **Incident:** drill `drl_92031e83…`, diagnosis, rollback plan `plan_425e552e…`, Raj's approval `apr_48627549…`,
+  then rollback `rel_3be93591…` (v0, revision 2, T001 still completed).
+* **11.6:** SEC-09 replay (single receipt, ACTION_CONFLICT on a changed payload). REC-03: reset twice to generation
+  13, identical canonical state. REC-04: `export_bundle.py --redacted`, then `import_flows.py --dry-run` keep ×7 and
+  the helper-ID remap rehearsal.
+* **Manifest:** `asm_a8c6a59c…` still QUALIFIED (last `--attest` 16:54Z, `att_c0b3523c…`).
+* **Deviations:** see PHASE11_REPORT §8 (D1 repair dedup, D2 Operations budget needs a second request, D3 story stage
+  not advanced).
+
+GATE 10: `docs/PHASE10_REPORT.md`.
+**Live-instance changes in Phase 11:** none to flows, globals, MCP servers, keys or Railway (attested identical
+throughout). Lab `demo-001`: resets 10 → 11 → 12 → 13 with exports `exp_639abe5f…`, `exp_d3dbb9b6…` and `exp_21e8b30d…`.
+Also, as listed in PHASE11_REPORT §1: story ST-001 (since reset away), 1 new candidate, 3 test runs, 1 A2A exchange,
+2 plans, 2 human approvals, 2 releases, 1 drill (disabled), 2 replays and 2 ACTION_CONFLICT denials. Langflow:
+Playground sessions in TS-10 ("New Session 7"), TS-20 ("New Session 0/1"), TS-30 ("New Session 0") and TS-90
+("New Session 4").
 **Live-instance changes in Phase 10:** none to flows, globals, MCP servers or keys (attested identical after the
 run). Lab `demo-001`: nine instructor resets (generation 1 → 10), six agent-evaluation reports, two attestations,
 AE-05 outage drills (disabled), and per-trial runs/events/candidates/test runs/A2A exchanges. Langflow: `ae-*`
@@ -241,8 +257,8 @@ Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
 | MCP, retrieval, skills | TESTED through Langflow (Phase 06) | 04, 06 |
 | Railway services | DEPLOYED, GATE 05 PASSED | 05 |
 | Live MCP / A2A / HITL protocol tests | MCP: TESTED through Langflow (native client Phase 06, SDK in the bounded toolset Phase 07); A2A/HITL NOT RUN | 04–09 |
-| Validated flow exports | TS-01/02/03/10/30 exported; same-instance dry-run keep ×5; fresh instance NOT RUN | 06, 07, 11 |
-| Application / security / agent evaluations | App/security: TESTED (Phases 03–09); agent evaluations QUALIFIED as rehearsal evidence (`aer_3b3fd570…`, Phase 10); full scenario NOT RUN | 03–11 |
+| Validated flow exports | All 7 exported sanitized (`export_bundle.py --redacted`, Phase 11); same-instance dry-run keep ×7; helper-ID remap rehearsed offline; fresh-instance import NOT RUN | 06, 07, 11 |
+| Application / security / agent evaluations | App/security: TESTED (Phases 03–09); agent evaluations QUALIFIED as rehearsal evidence (`aer_3b3fd570…`, Phase 10); full scenario TESTED (Phase 11) | 03–11 |
 | Two-hour rehearsal | NOT RUN | 12 |
 
 ## Stop conditions carried forward
@@ -317,3 +333,21 @@ Full detail: `docs/PHASE01_REPORT.md`. Map: `langflow/COMPONENT_MAP.md`.
 | Class cases | PREPARED | `docs/CLASS_CASES.md` (AE-04, AE-07, AE-08) |
 | TS-90 evaluation launcher | NOT BUILT (accepted) | instructor-run harness instead |
 | Cost | ESTIMATE only | ≈ USD 1.84 qualification run, ≈ USD 4.51 all 67 trials (Langflow catalog price table, unverified) |
+
+
+## Phase 11 results (20 Oct 2026, 16:12–16:55 UTC)
+
+| Item | Status | Evidence |
+|---|---|---|
+| 11.1 reset/seed through TS-90 | TESTED | `evt_efcc14de…`, generation 11, v0 at revision 0, T001/T002 |
+| 11.2 story, scope, live candidate, labelled faulty fixture | TESTED (live) | ST-001; `confirm scope`; `cand_47ed17ab…` / `tr_e8780e24…` pass; `cand_93db2118…` fixture-faulty |
+| 11.3 defect, relay, one repair, retest | TESTED (live) | `tr_1374141c…` fail (TC-02 retention); `cand_24eb7c0a…` / `tr_06dbad83…` pass; no reference fallback |
+| 11.4 A2A, plan, denied bypass, human approval, activation, retention | TESTED (live; plan on a second request) | `a2ax_21440032…`; `plan_8b183758…`; refusal with no execute; `apr_dd30ee46…` (Raj); `rel_1e1e06da…` revision 1; T001 COMPLETED and listed |
+| 11.5 drill, diagnosis, rollback plan, human approval, rollback, records | TESTED (live; plan on a second request) | `drl_92031e83…`; COMPLETION_UNAVAILABLE_DRILL, `/healthz` 200; `plan_425e552e…`; `apr_48627549…` (Raj); `rel_3be93591…` revision 2; T001 still completed; FEATURE_UNAVAILABLE on v0 |
+| SEC-09 lost response replay (live) | PASS | `phase11_checks.py replay`: same receipt ×2 plans, ACTION_CONFLICT on a changed payload, releases unchanged |
+| REC-03 reset twice | PASS | `reset_demo.py`: generation 12 and 13, identical canonical state |
+| REC-04 sanitized export/import | PASS (same-instance dry-run) | `export_bundle.py --redacted` PASS; `import_flows.py --dry-run` keep ×7; remap rehearsal PASS; live re-import NOT RUN by design |
+| A13 `reset_demo.py`, `export_bundle.py` | BUILT, TESTED | as above; `seed_demo.py` already existed |
+| `doctor.py`, `verify_flows.py` (A13) | NOT BUILT | Phase 12 |
+| Tests | PASS | `628 passed in 26.57s` (unchanged suite) |
+| Manifest | QUALIFIED, attested | `att_c0b3523c…` 16:54Z (valid 24 h) |
