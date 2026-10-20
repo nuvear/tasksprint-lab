@@ -27,6 +27,7 @@ from .candidates import get_candidate, put_candidate, sha256_hex, verify_integri
 from .clock import parse_iso, to_iso, utc_now, utc_now_iso
 from .config import Settings
 from .releases import app_health, get_active, record_seed_release
+from .runs import sweep_expired
 from .state import StateWriter, get_story
 from .store import LabError, get_workspace
 
@@ -124,9 +125,14 @@ def _counts(conn: sqlite3.Connection, workspace_id: str) -> dict[str, int]:
 
 
 def _pending(conn: sqlite3.Connection, workspace_id: str) -> dict[str, list[str]]:
+    now = utc_now()
+    active = [(r[0], r[1]) for r in conn.execute(
+        "SELECT run_id, deadline_at FROM runs WHERE workspace_id = ? AND status = 'active'", (workspace_id,))]
     return {
-        "active_runs": [r[0] for r in conn.execute(
-            "SELECT run_id FROM runs WHERE workspace_id = ? AND status = 'active'", (workspace_id,))],
+        # Phase 10: only runs that are still live; runs past their deadline are reported separately (they are
+        # marked expired on the next write and could never act: expiry is enforced at use).
+        "active_runs": [rid for rid, dl in active if parse_iso(dl) > now],
+        "past_deadline_runs": [rid for rid, dl in active if parse_iso(dl) <= now],
         "open_plans": [r[0] for r in conn.execute(
             "SELECT p.plan_id FROM release_plans p JOIN release_plan_states s ON s.plan_id = p.plan_id WHERE"
             " p.workspace_id = ? AND s.state IN ('PLANNED','AWAITING_APPROVAL','APPROVED')", (workspace_id,))],
@@ -134,6 +140,8 @@ def _pending(conn: sqlite3.Connection, workspace_id: str) -> dict[str, list[str]
             "SELECT approval_id FROM approvals WHERE workspace_id = ? AND status = 'active'", (workspace_id,))],
         "enabled_drills": [r[0] for r in conn.execute(
             "SELECT drill_id FROM drills WHERE workspace_id = ? AND enabled = 1", (workspace_id,))],
+        "enabled_outages": [r[0] for r in conn.execute(
+            "SELECT outage_id FROM tool_outages WHERE workspace_id = ? AND enabled = 1", (workspace_id,))],
     }
 
 
@@ -192,8 +200,10 @@ def reset_confirm(conn: sqlite3.Connection, settings: Settings, workspace_id: st
     conn.execute("INSERT INTO workspace_exports(export_id, workspace_id, generation, export_json, export_sha256,"
                  " created_at) VALUES (?,?,?,?,?,?)", (export_id, workspace_id, ws["generation"], export_json,
                                                        export_sha, now))
-    # 2. clear drills and the stop flag; cancel pending work of the old generation
+    # 2. clear drills/outages and the stop flag; cancel pending work of the old generation
     conn.execute("UPDATE drills SET enabled = 0 WHERE workspace_id = ? AND enabled = 1", (workspace_id,))
+    conn.execute("UPDATE tool_outages SET enabled = 0 WHERE workspace_id = ? AND enabled = 1", (workspace_id,))
+    sweep_expired(conn, workspace_id)
     conn.execute("UPDATE runs SET status = 'cancelled', updated_at = ? WHERE workspace_id = ? AND status = 'active'",
                  (now, workspace_id))
     for plan_id in pending["open_plans"]:
@@ -315,6 +325,7 @@ def stop(conn: sqlite3.Connection, settings: Settings, workspace_id: str, stoppe
     ws = _existing(conn, settings, workspace_id)
     now = utc_now_iso()
     cancelled: list[str] = []
+    sweep_expired(conn, workspace_id)
     if stopped:
         cancelled = [r[0] for r in conn.execute("SELECT run_id FROM runs WHERE workspace_id = ? AND status = 'active'",
                                                 (workspace_id,))]
@@ -335,3 +346,54 @@ def stop(conn: sqlite3.Connection, settings: Settings, workspace_id: str, stoppe
             "note": ("Kill switch on: active runs are cancelled, late results cannot commit, and new runs, plans and "
                      "executions are refused until resume. Cancelled runs stay cancelled." if stopped else
                      "Stop flag cleared. Previously cancelled runs stay cancelled; start a new turn.")}
+
+
+OUTAGE_TOOLS = ("run_candidate_tests", "get_app_health")
+
+
+def outage(conn: sqlite3.Connection, settings: Settings, workspace_id: str, enable: bool, tool: str | None,
+           ttl_minutes: int | None, request_id: str) -> dict[str, Any]:
+    """Phase 10 (AE-05): a controlled, short-lived 'unavailable' result for one tool in a designated workspace.
+
+    While enabled the tool's backend returns ``503 TOOL_UNAVAILABLE`` and does nothing; liveness, other tools
+    and other workspaces are unaffected. Reset clears it. It is an evaluation fault, not a production change.
+    """
+    _existing(conn, settings, workspace_id)
+    if tool not in OUTAGE_TOOLS:
+        raise LabError(422, "OUTAGE_ARGUMENTS", "outages need tool run_candidate_tests or get_app_health")
+    now = utc_now()
+    if enable:
+        ttl = ttl_minutes or 5
+        if not 1 <= ttl <= DRILL_MAX_TTL_MIN:
+            raise LabError(422, "OUTAGE_TTL", f"ttl_minutes must be 1..{DRILL_MAX_TTL_MIN}")
+        live = [r for r in conn.execute("SELECT * FROM tool_outages WHERE workspace_id = ? AND tool = ? AND enabled = 1",
+                                        (workspace_id, tool)) if parse_iso(r["expires_at"]) > now]
+        if live:
+            outage_id, created, expires = live[0]["outage_id"], False, live[0]["expires_at"]
+        else:
+            outage_id, created, expires = "out_" + secrets.token_hex(12), True, to_iso(now + timedelta(minutes=ttl))
+            conn.execute("INSERT INTO tool_outages(outage_id, workspace_id, tool, enabled, expires_at, created_by,"
+                         " created_at) VALUES (?,?,?,1,?,?,?)", (outage_id, workspace_id, tool, expires, "instructor",
+                                                                 to_iso(now)))
+        record_event(conn, request_id=request_id, actor_role="instructor", action="instructor.outage_enable",
+                     outcome="ok" if created else "duplicate", workspace_id=workspace_id,
+                     details={"outage_id": outage_id, "tool": tool, "expires_at": expires})
+        return {"action": "outage_enable", "workspace_id": workspace_id, "outage_id": outage_id, "tool": tool,
+                "created": created, "expires_at": expires,
+                "note": "Controlled evaluation fault: this tool returns TOOL_UNAVAILABLE and does nothing until "
+                        "disabled, expired or reset. /healthz and every other tool are unaffected."}
+    cur = conn.execute("UPDATE tool_outages SET enabled = 0 WHERE workspace_id = ? AND tool = ? AND enabled = 1",
+                       (workspace_id, tool))
+    record_event(conn, request_id=request_id, actor_role="instructor", action="instructor.outage_disable",
+                 outcome="ok" if cur.rowcount else "none_enabled", workspace_id=workspace_id,
+                 details={"tool": tool, "disabled": cur.rowcount})
+    return {"action": "outage_disable", "workspace_id": workspace_id, "tool": tool, "disabled": cur.rowcount}
+
+
+def active_outage(conn: sqlite3.Connection, workspace_id: str, tool: str) -> sqlite3.Row | None:
+    now = utc_now()
+    for r in conn.execute("SELECT * FROM tool_outages WHERE workspace_id = ? AND tool = ? AND enabled = 1",
+                          (workspace_id, tool)):
+        if parse_iso(r["expires_at"]) > now:
+            return r
+    return None

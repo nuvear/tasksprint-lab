@@ -31,9 +31,9 @@ from .operations import Ctx, LabOps, RunCheckedStore
 from .retrieval import KnowledgeBase
 from .runner_client import RunnerClient, build_runner
 from .schemas import (A2AExchangeCreate, AgentEvaluationCreate, AppCommand, ApprovalCreate, CandidateSubmit,
-                      InstructorAction, InstructorKnowledgeSearch, KnowledgeSearch, MemorySave, ReadinessQuery,
-                      ReleaseExecutionCreate, ReleasePlanCreate, RunCreate, StoryCreate, TestRunCreate,
-                      TransitionRequest)
+                      InstructorAction, InstructorKnowledgeSearch, IsoUtc, KnowledgeSearch, ManifestAttestationCreate,
+                      MemorySave, ReadinessQuery, ReleaseExecutionCreate, ReleasePlanCreate, RunCreate, StoryCreate,
+                      TestRunCreate, TransitionRequest)
 from .skills import SkillCatalog
 from .store import LabError, Store, require_active_workspace
 
@@ -46,6 +46,10 @@ RUN_HEADER = "x-tasksprint-run"
 class RequestContextMiddleware:
     """Server-generated request IDs and a hard request-body size limit."""
 
+    # Phase 10: the evaluator's immutable report (24+ trials with checks and evidence IDs) may exceed the
+    # general limit; only this one route gets a larger, still bounded, body limit.
+    LARGE_BODY_PATHS = {"/v1/agent-evaluations": 256 * 1024}
+
     def __init__(self, app: Any, max_body_bytes: int):
         self.app = app
         self.max_body = max_body_bytes
@@ -56,6 +60,7 @@ class RequestContextMiddleware:
             return
         request_id = audit.new_request_id()
         scope.setdefault("state", {})["request_id"] = request_id
+        limit = max(self.max_body, self.LARGE_BODY_PATHS.get(scope.get("path", ""), 0))
 
         async def send_with_id(message: dict) -> None:
             if message["type"] == "http.response.start":
@@ -67,7 +72,7 @@ class RequestContextMiddleware:
         declared = dict(scope.get("headers", [])).get(b"content-length")
         if declared is not None:
             try:
-                too_big = int(declared) > self.max_body
+                too_big = int(declared) > limit
             except ValueError:
                 too_big = True
             if too_big:
@@ -81,7 +86,7 @@ class RequestContextMiddleware:
                 return
             body += message.get("body", b"")
             more = message.get("more_body", False)
-            if len(body) > self.max_body:
+            if len(body) > limit:
                 await _send_error(send_with_id, 413, "REQUEST_TOO_LARGE", "request body exceeds the size limit", request_id)
                 return
         replayed = False
@@ -293,6 +298,28 @@ def create_app(settings: Settings | None = None, runner: RunnerClient | None = N
     def record_agent_evaluation(body: AgentEvaluationCreate, c: Ctx = Depends(ctx)) -> dict:
         return ops.record_agent_evaluation(c, body)
 
+    @app.get("/v1/agent-evaluations/{report_id}")
+    def read_agent_evaluation(report_id: str, c: Ctx = Depends(ctx)) -> dict:
+        return ops.read_agent_evaluation(c, report_id)
+
+    @app.get("/v1/agent-system-manifests/qualified")
+    def qualified_manifest(c: Ctx = Depends(ctx)) -> dict:
+        return ops.qualified_manifest(c)
+
+    @app.post("/v1/agent-system-manifests/attestations", status_code=201)
+    def attest_manifest(body: ManifestAttestationCreate, c: Ctx = Depends(ctx)) -> dict:
+        return ops.attest_manifest(c, body)
+
+    @app.get("/v1/evaluator/observations")
+    def evaluator_observations(c: Ctx = Depends(ctx), since: str = Query(..., max_length=20),
+                               limit: int = Query(1000, ge=1, le=5000)) -> dict:
+        from pydantic import TypeAdapter, ValidationError
+        try:
+            TypeAdapter(IsoUtc).validate_python(since)
+        except ValidationError:
+            raise LabError(422, "VALIDATION_ERROR", "since must be an ISO UTC timestamp like 2026-10-20T14:00:00Z")
+        return ops.evaluator_observations(c, since, limit)
+
     @app.post("/v1/a2a-exchanges", status_code=201)
     def record_a2a_exchange(body: A2AExchangeCreate, c: Ctx = Depends(ctx)) -> dict:
         return ops.record_a2a_exchange(c, body)
@@ -364,6 +391,8 @@ def create_app(settings: Settings | None = None, runner: RunnerClient | None = N
             "stop": lambda conn: instructor.stop(conn, settings, ws, True, body.reason, rid),
             "resume": lambda conn: instructor.stop(conn, settings, ws, False, None, rid),
             "reset_confirm": lambda conn: instructor.reset_confirm(conn, settings, ws, body.confirm, rid),
+            "outage_enable": lambda conn: instructor.outage(conn, settings, ws, True, body.tool, body.ttl_minutes, rid),
+            "outage_disable": lambda conn: instructor.outage(conn, settings, ws, False, body.tool, None, rid),
         }
         if body.action == "reset_preview":
             with store.read() as conn:

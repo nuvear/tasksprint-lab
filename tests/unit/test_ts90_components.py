@@ -14,7 +14,7 @@ import types
 import pytest
 
 from services.lab.config import REPO_ROOT
-from tests.conftest import headers
+from tests.conftest import headers, qualify
 
 COMPONENTS = REPO_ROOT / "components"
 
@@ -77,6 +77,7 @@ def test_parser_refuses_everything_else(mods, line):
 
 
 def _plan(seeded):
+    qualify(seeded.client)  # TEST-ONLY qualifying report (Phase 10: a deploy plan binds a qualified manifest)
     ref = seeded.load_fixture("reference_complete")
     assert seeded.run_tests(ref["candidate_id"]).json()["outcome"] == "pass"
     p = seeded.client.post("/v1/release-plans", json={"action": "deploy", "candidate_id": ref["candidate_id"]},
@@ -92,7 +93,7 @@ def test_review_text_carries_the_exact_snapshot_the_backend_hashes(mods, seeded)
     assert snap == view["review_snapshot"] and plan_id == view["plan"]["plan_id"]
     assert plan_sha == view["plan"]["plan_sha256"] and snap_sha == view["snapshot_sha256"]
     assert hashlib.sha256(rd.canonical(snap).encode()).hexdigest() == view["snapshot_sha256"]
-    assert "NOT_QUALIFIED" in text and "neither choice executes anything" in text
+    assert "Agent-system manifest: BOUND" in text and "neither choice executes anything" in text
 
 
 def test_tampered_or_ambiguous_review_text_is_not_recordable(mods, seeded):

@@ -112,3 +112,52 @@ def lab(db_path: Path) -> Lab:
 def seeded(lab: Lab) -> Lab:
     lab.seed("demo-001")
     return lab
+
+
+# ------------------------------------------------------------------ Phase 10: TEST-ONLY evaluation reports
+TEST_SYSTEM = {
+    "langflow": {"version": "test-only"},
+    "flows": {"TS-10": {"flow_id": "test-only", "export_sha256": "0" * 64}},
+    "models": {"agents": {"TS-10": {"model_name": "test-only"}}},
+    "a2a": {"protocol_version": "0.3.0"},
+    "harness": {"harness_version": "test-only", "case_set_version": "tasksprint-agent-cases/1",
+                "grader_sha256": "1" * 64},
+}
+
+
+def eval_report(*, repetitions: int = 3, purpose: str = "qualification", cases=None, fail: tuple = (),
+                system: dict | None = None, label: str = "TEST-ONLY report", evidence: dict | None = None,
+                end_offset_s: int = 20) -> dict:
+    """A syntactically valid report with one check per case. TEST-ONLY: no agent was run."""
+    from services.lab.agent_evaluations import REQUIRED_CASES
+    from services.lab.clock import to_iso, utc_now
+    from datetime import timedelta
+    cases = list(cases or REQUIRED_CASES)
+    # Trial windows end ``end_offset_s`` before now so setup events (seed, fixture) are outside every window.
+    end = utc_now() - timedelta(seconds=end_offset_s)
+    start = end - timedelta(seconds=len(cases) * repetitions + 5)
+    trials, t = [], start
+    for rep in range(1, repetitions + 1):
+        for cid in cases:
+            t1 = t + timedelta(seconds=1)
+            failed = (cid, rep) in fail
+            trials.append({"case_id": cid, "repetition": rep, "status": "fail" if failed else "pass",
+                           "started_at": to_iso(t), "ended_at": to_iso(t1), "latency_ms": 1000,
+                           "session_id": f"test-{cid}-{rep}", "flow": "TS-10",
+                           "evidence_refs": list((evidence or {}).get((cid, rep), [])),
+                           "checks": [{"check_id": f"{cid}.outcome", "passed": not failed, "observed": "test-only"}],
+                           "usage": None, "usage_unavailable_reason": "test-only"})
+            t = t1
+    return {"harness_version": "test-only", "purpose": purpose, "label": label, "repetitions": repetitions,
+            "started_at": to_iso(start), "ended_at": to_iso(end), "system": system or TEST_SYSTEM,
+            "check_catalog": [{"check_id": f"{c}.outcome", "case_id": c, "description": "test-only outcome",
+                               "critical": True, "method": "state"} for c in REQUIRED_CASES],
+            "trials": trials, "trajectory_digest_sha256": "2" * 64}
+
+
+def qualify(client, workspace: str = "demo-001") -> dict:
+    """Record a TEST-ONLY qualifying report through the real evaluator route."""
+    r = client.post("/v1/agent-evaluations", json=eval_report(), headers=headers("evaluator", workspace))
+    assert r.status_code == 201, r.text
+    assert r.json()["verdict"] == "QUALIFIED", r.json()
+    return r.json()

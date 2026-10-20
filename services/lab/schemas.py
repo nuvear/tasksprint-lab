@@ -67,13 +67,14 @@ INSTRUCTOR_ACTION_FIELDS: dict[str, frozenset[str]] = {
     "drill_enable": frozenset({"fault_type", "candidate_id", "ttl_minutes"}),
     "drill_disable": frozenset({"fault_type", "candidate_id"}),
     "stop": frozenset({"reason"}), "resume": frozenset(),
+    "outage_enable": frozenset({"tool", "ttl_minutes"}), "outage_disable": frozenset({"tool"}),
 }
 
 
 class InstructorAction(Strict):
     """Allowlisted instructor actions; each action accepts only its own optional fields."""
     action: Literal["seed", "reset_preview", "reset_confirm", "load_fixture", "confirm_scope", "drill_enable",
-                    "drill_disable", "stop", "resume"]
+                    "drill_disable", "stop", "resume", "outage_enable", "outage_disable"]
     workspace_id: WorkspaceId
     # load_fixture: an allowlisted, labelled instructor fixture name.
     fixture: Literal["faulty_delete", "reference_complete"] | None = None
@@ -84,6 +85,8 @@ class InstructorAction(Strict):
     fault_type: Literal["completion_unavailable"] | None = None
     candidate_id: Annotated[str, Field(pattern=r"^cand_[0-9a-f]{24}$")] | None = None
     ttl_minutes: Annotated[int, Field(strict=True, ge=1, le=30)] | None = None
+    # outage_enable / outage_disable (Phase 10, AE-05): a controlled unavailable result for one tool
+    tool: Literal["run_candidate_tests", "get_app_health"] | None = None
     # reset_confirm: must equal workspace_id
     confirm: WorkspaceId | None = None
     # stop: short human note
@@ -163,11 +166,60 @@ class ReleaseExecutionCreate(Strict):
     action_id: Annotated[str, Field(pattern=r"^act_[0-9a-f]{24}$")] | None = None
 
 
+IsoUtc = Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")]
+EvidenceRef = Annotated[str, Field(pattern=r"^(evt|run|tr|cand|plan|a2ax|apr|rel)_[0-9a-f]{24,32}$")]
+CaseId = Annotated[str, Field(pattern=r"^AE-0[1-8]$")]
+CheckId = Annotated[str, Field(pattern=r"^AE-0[1-8]\.[a-z0-9_]{1,40}$")]
+
+
+class EvalCheckDef(Strict):
+    check_id: CheckId
+    case_id: CaseId
+    description: Annotated[str, Field(min_length=1, max_length=240)]
+    critical: bool
+    method: Literal["state", "trajectory", "lexical", "langflow"]
+
+
+class EvalCheckResult(Strict):
+    check_id: CheckId
+    passed: bool | None
+    evidence: Annotated[list[EvidenceRef], Field(max_length=12)] = []
+    observed: Annotated[str, Field(max_length=200)] = ""
+
+
+class EvalTrial(Strict):
+    case_id: CaseId
+    repetition: Annotated[int, Field(strict=True, ge=1, le=10)]
+    status: Literal["pass", "fail", "not_run", "error"]
+    started_at: IsoUtc
+    ended_at: IsoUtc
+    latency_ms: Annotated[int, Field(strict=True, ge=0, le=3_600_000)] | None = None
+    session_id: Annotated[str, Field(pattern=r"^[A-Za-z0-9_.:-]{1,64}$")]
+    flow: Annotated[str, Field(pattern=r"^TS-(01|02|03|10|20|30)$")]
+    run_ids: Annotated[list[Annotated[str, Field(pattern=r"^run_[0-9a-f]{32}$")]], Field(max_length=12)] = []
+    evidence_refs: Annotated[list[EvidenceRef], Field(max_length=40)] = []
+    checks: Annotated[list[EvalCheckResult], Field(max_length=16)] = []
+    usage: dict[str, Annotated[int, Field(strict=True, ge=0)]] | None = None
+    usage_unavailable_reason: Annotated[str, Field(max_length=160)] | None = None
+    not_run_reason: Annotated[str, Field(max_length=200)] | None = None
+    fault_injection: Annotated[str, Field(max_length=200)] | None = None
+
+
 class AgentEvaluationCreate(Strict):
-    """Evaluator only (Phase 09 stub; Phase 10 defines qualification). Stored, never self-qualifying."""
+    """Evaluator only (trusted harness, no MCP tool). The server recomputes the verdict and the lab-side manifest."""
     harness_version: Annotated[str, Field(min_length=1, max_length=64)]
-    manifest: dict[str, Any]
-    cases: Annotated[list[dict[str, Any]], Field(max_length=50)]
+    purpose: Literal["qualification", "partial", "class"]
+    label: Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[^\x00-\x1f\x7f]+$")]
     repetitions: Annotated[int, Field(strict=True, ge=1, le=10)]
-    outcomes: dict[str, Any]
-    trajectories: Annotated[list[dict[str, Any]], Field(max_length=200)] = []
+    started_at: IsoUtc
+    ended_at: IsoUtc
+    system: dict[str, Any]
+    check_catalog: Annotated[list[EvalCheckDef], Field(min_length=1, max_length=120)]
+    trials: Annotated[list[EvalTrial], Field(min_length=1, max_length=90)]
+    trajectory_digest_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    telemetry_notes: Annotated[str, Field(max_length=500)] = ""
+
+
+class ManifestAttestationCreate(Strict):
+    """Evaluator only: the harness's freshly computed live Langflow/harness system manifest."""
+    system: dict[str, Any]

@@ -336,12 +336,48 @@ CREATE TABLE workspace_exports (
 ALTER TABLE agent_eval_reports ADD COLUMN workspace_id TEXT;
 """ + _immutable("baseline_smoke_runs") + _immutable("workspace_exports")
 
+# Phase 10: immutable agent-evaluation reports with a server-computed verdict and manifest, append-only
+# attestations of the live Langflow/harness system, controlled tool-outage drills, and an events time index.
+MIGRATION_0005 = """
+ALTER TABLE agent_eval_reports ADD COLUMN report_json TEXT;
+ALTER TABLE agent_eval_reports ADD COLUMN report_sha256 TEXT;
+ALTER TABLE agent_eval_reports ADD COLUMN manifest_id TEXT;
+ALTER TABLE agent_eval_reports ADD COLUMN manifest_sha256 TEXT;
+ALTER TABLE agent_eval_reports ADD COLUMN lab_side_sha256 TEXT;
+ALTER TABLE agent_eval_reports ADD COLUMN system_sha256 TEXT;
+ALTER TABLE agent_eval_reports ADD COLUMN verdict TEXT;
+ALTER TABLE agent_eval_reports ADD COLUMN purpose TEXT;
+ALTER TABLE agent_eval_reports ADD COLUMN critical_failures INTEGER;
+ALTER TABLE agent_eval_reports ADD COLUMN failed_trials INTEGER;
+CREATE INDEX agent_eval_reports_by_ws ON agent_eval_reports(workspace_id, verdict, created_at);
+CREATE TABLE agent_manifest_attestations (
+    attestation_id  TEXT PRIMARY KEY,
+    workspace_id    TEXT NOT NULL REFERENCES workspaces(workspace_id),
+    system_sha256   TEXT NOT NULL CHECK (length(system_sha256) = 64),
+    lab_side_sha256 TEXT NOT NULL CHECK (length(lab_side_sha256) = 64),
+    system_json     TEXT NOT NULL,
+    created_by      TEXT NOT NULL,
+    created_at      TEXT NOT NULL
+);
+CREATE TABLE tool_outages (
+    outage_id    TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id),
+    tool         TEXT NOT NULL CHECK (tool IN ('run_candidate_tests','get_app_health')),
+    enabled      INTEGER NOT NULL CHECK (enabled IN (0,1)),
+    expires_at   TEXT NOT NULL,
+    created_by   TEXT NOT NULL,
+    created_at   TEXT NOT NULL
+);
+CREATE INDEX events_by_workspace_time ON events(workspace_id, created_at);
+""" + _immutable("agent_manifest_attestations")
+
 # (version, name, sql). Never edit an applied migration: add a new version.
 MIGRATIONS: list[tuple[int, str, str]] = [
     (1, "initial lab schema (Phase 02)", MIGRATION_0001),
     (2, "FTS5 knowledge chunk index (Phase 04)", MIGRATION_0002),
     (3, "append-only A2A exchange records (Phase 08)", MIGRATION_0003),
     (4, "approvals, stop flag, baseline smoke, workspace exports (Phase 09)", MIGRATION_0004),
+    (5, "agent-evaluation verdicts, manifest attestations, tool outages (Phase 10)", MIGRATION_0005),
 ]
 
 

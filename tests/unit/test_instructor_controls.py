@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from services.lab import clock
-from tests.conftest import headers
+from tests.conftest import eval_report, headers
 
 
 def act(lab, action, workspace="demo-001", role="instructor", **fields):
@@ -145,13 +145,13 @@ def test_reset_restores_v0_when_another_version_is_active(seeded):
     assert st["active"]["label"] == "starter-v0" and st["active"]["release_revision"] == 1
 
 
-def test_evaluator_stub_stores_but_never_qualifies(seeded):
-    body = {"harness_version": "stub-0", "manifest": {"model": "x"}, "cases": [{"id": "AE-01"}], "repetitions": 1,
-            "outcomes": {"AE-01": "pass"}}
+def test_evaluator_route_is_evaluator_only_and_the_server_computes_the_verdict(seeded):
+    """Phase 10 replaced the Phase 09 stub: a partial report is stored but cannot qualify a manifest."""
+    body = eval_report(purpose="partial", cases=["AE-01"], repetitions=1)
     for role in ("coordinator", "developer", "qa", "operations", "instructor", "human_approver"):
         assert seeded.client.post("/v1/agent-evaluations", json=body, headers=headers(role)).status_code == 403
     r = seeded.client.post("/v1/agent-evaluations", json=body, headers=headers("evaluator"))
-    assert r.status_code == 201 and r.json()["qualifies_agent_manifest"] is False
+    assert r.status_code == 201 and r.json()["verdict"] == "NOT_QUALIFIED"
     assert seeded.client.post("/v1/agent-evaluations", json={**body, "qualified": True},
                               headers=headers("evaluator")).status_code == 422
     ready = seeded.client.get("/v1/readiness", headers=headers("operations")).json()

@@ -10,7 +10,7 @@ from jsonschema import Draft202012Validator
 
 from services.lab import clock, release_plans
 from services.lab.config import REPO_ROOT
-from tests.conftest import headers
+from tests.conftest import headers, qualify
 
 PLAN_SCHEMA = json.loads((REPO_ROOT / "contracts" / "release-plan.schema.json").read_text())
 
@@ -85,18 +85,24 @@ def test_deploy_plan_refused_while_not_ready_and_nothing_changes(tested):
         assert conn.execute("SELECT COUNT(*) FROM release_plans").fetchone()[0] == 0
 
 
-def test_manifest_only_gap_yields_a_reviewable_plan_bound_to_a_null_manifest(tested):
-    """Phase 09: the plan may exist for human review; A11 step 5 refuses its execution (test_executions)."""
+def test_manifest_only_gap_refuses_the_deploy_plan_under_schema_1_2(tested):
+    """Phase 10 (plan schema 1.2): no deploy plan without a qualified manifest; with one, the plan binds it."""
     lab, ref, report = tested
     before = active(lab)
+    r = plan(lab, "deploy", ref["candidate_id"])
+    assert r.status_code == 409 and r.json()["error"]["details"]["blocking_gates"] == ["agent_system_manifest"]
+    rec = qualify(lab.client)
     r = plan(lab, "deploy", ref["candidate_id"])
     assert r.status_code == 201, r.text
     body = r.json()
     Draft202012Validator(PLAN_SCHEMA).validate(body["plan"])
-    assert body["plan"]["agent_manifest_id"] is None and body["plan"]["app_test_run_id"] == report["test_run_id"]
-    assert body["review_snapshot"]["agent_baseline_manifest"]["status"].startswith("NOT_QUALIFIED")
+    assert body["plan"]["agent_manifest_id"] == rec["manifest_id"] and body["plan"]["schema_version"] == "1.2"
+    assert body["plan"]["app_test_run_id"] == report["test_run_id"]
+    assert body["review_snapshot"]["agent_baseline_manifest"]["status"] == "BOUND"
     assert body["state"] == "AWAITING_APPROVAL" and body["decision"] is None and body["execution"] is None
     assert active(lab) == before
+    bad = dict(body["plan"], agent_manifest_id=None)
+    assert list(Draft202012Validator(PLAN_SCHEMA).iter_errors(bad))  # 1.2 deploy requires a manifest id
 
 
 def test_deploy_plan_binds_evidence_hash_and_awaits_approval(tested, qualified):

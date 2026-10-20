@@ -152,11 +152,12 @@ def execute(conn: sqlite3.Connection, *, workspace_id: str, plan_id: str, plan_s
         if plan["app_test_run_id"] is None or rep is None:
             raise _deny(5, 409, "TEST_EVIDENCE_MISSING", "no passing protected report for this exact candidate hash "
                         "under the current suite", plan_id, action_id)
-        manifest = release_plans.qualified_agent_manifest(conn, workspace_id)  # Phase 10 fills this gate
+        manifest = release_plans.qualified_agent_manifest(conn, workspace_id)  # Phase 10 gate, recomputed now
         if manifest is None:
-            raise _deny(5, 409, "AGENT_MANIFEST_NOT_QUALIFIED", "no approved agent-system manifest exists (agent "
-                        "evaluations are Phase 10); deployment stays blocked even with a valid human approval. "
-                        "Nothing was executed and the approval was not consumed.", plan_id, action_id)
+            raise _deny(5, 409, "AGENT_MANIFEST_NOT_QUALIFIED", "no qualified agent-system manifest matches the live "
+                        "system now (see readiness gate agent_system_manifest); deployment stays blocked even with a "
+                        "valid human approval. Nothing was executed and the approval was not consumed.",
+                        plan_id, action_id)
         if manifest.get("manifest_id") != plan["agent_manifest_id"]:
             raise _deny(5, 409, "AGENT_MANIFEST_MISMATCH", "the plan is bound to a different agent-system manifest "
                         "than the one currently approved", plan_id, action_id)

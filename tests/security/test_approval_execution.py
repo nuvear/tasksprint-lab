@@ -12,7 +12,7 @@ from datetime import timedelta
 import pytest
 
 from services.lab import clock, executions, release_plans
-from tests.conftest import headers
+from tests.conftest import headers, qualify
 
 AGENT_ROLES = ("coordinator", "product_owner", "developer", "qa", "operations", "application")
 
@@ -254,12 +254,44 @@ def test_expired_approval_is_denied(tested, qualified):
     assert active(lab)["active"]["release_revision"] == 0
 
 
-def test_null_manifest_plan_is_reviewable_but_never_deployable(tested):
-    """No manifest qualifies before Phase 10: a valid human approval is necessary but not sufficient."""
+def _legacy_null_manifest_plan(lab, ref):
+    """TEST-ONLY: a stored Phase 09 (schema 1.1) deploy plan bound to a null manifest, written directly."""
+    import json
+    from services.lab.clock import to_iso, utc_now
+    with lab.store().write() as conn:
+        act = conn.execute("SELECT * FROM active_releases WHERE workspace_id = 'demo-001'").fetchone()
+        rep = conn.execute("SELECT test_run_id FROM test_runs WHERE candidate_id = ? AND outcome = 'pass'",
+                           (ref["candidate_id"],)).fetchone()
+        plan = {"schema_version": "1.1", "plan_id": "plan_" + "1" * 24, "workspace_id": "demo-001",
+                "operation": "deploy", "environment": "demo-production", "target_candidate_id": ref["candidate_id"],
+                "target_sha256": ref["sha256"], "current_sha256": act["active_sha256"],
+                "expected_release_revision": act["release_revision"], "app_test_run_id": rep["test_run_id"],
+                "agent_manifest_id": None, "baseline_evidence_id": None,
+                "expires_at": to_iso(utc_now() + timedelta(minutes=15))}
+        plan["plan_sha256"] = release_plans.plan_hash(plan)
+        now = to_iso(utc_now())
+        conn.execute("INSERT INTO release_plans(plan_id, workspace_id, generation, operation, plan_json, plan_sha256,"
+                     " created_at) VALUES (?,?,?,?,?,?,?)", (plan["plan_id"], "demo-001", 1, "deploy",
+                                                             release_plans.canonical_json(plan), plan["plan_sha256"],
+                                                             now))
+        conn.execute("INSERT INTO release_plan_states(plan_id, state, revision, updated_at) VALUES (?,?,2,?)",
+                     (plan["plan_id"], "AWAITING_APPROVAL", now))
+    return plan["plan_id"]
+
+
+def test_no_deploy_plan_without_a_qualified_manifest(tested):
+    """Phase 10 (plan schema 1.2): the manifest gap refuses the plan itself."""
     lab, ref, _ = tested
-    p = make_plan(lab, "deploy", ref["candidate_id"])
-    pid = p["plan"]["plan_id"]
-    assert p["plan"]["agent_manifest_id"] is None
+    r = lab.client.post("/v1/release-plans", json={"action": "deploy", "candidate_id": ref["candidate_id"]},
+                        headers=headers("operations"))
+    assert r.status_code == 409 and r.json()["error"]["code"] == "RELEASE_NOT_READY"
+    assert r.json()["error"]["details"]["blocking_gates"] == ["agent_system_manifest"]
+
+
+def test_legacy_null_manifest_plan_is_reviewable_but_never_deployable(tested):
+    """A stored 1.1 plan with a null manifest: a valid human approval is necessary but not sufficient."""
+    lab, ref, _ = tested
+    pid = _legacy_null_manifest_plan(lab, ref)
     a = decide(lab, pid).json()
     r = execute(lab, pid)
     assert r.status_code == 409 and code(r) == "AGENT_MANIFEST_NOT_QUALIFIED"
@@ -269,11 +301,11 @@ def test_null_manifest_plan_is_reviewable_but_never_deployable(tested):
     assert active(lab)["active"]["release_revision"] == 0 and a["approval_id"] == view["decision"]["approval_id"]
 
 
-def test_null_manifest_plan_stays_blocked_after_a_manifest_qualifies(tested, monkeypatch):
+def test_legacy_null_manifest_plan_stays_blocked_after_a_manifest_qualifies(tested):
     lab, ref, _ = tested
-    pid = make_plan(lab, "deploy", ref["candidate_id"])["plan"]["plan_id"]
+    pid = _legacy_null_manifest_plan(lab, ref)
     decide(lab, pid)
-    monkeypatch.setattr(release_plans, "qualified_agent_manifest", lambda conn, ws: {"manifest_id": "mf_later"})
+    qualify(lab.client)
     assert code(execute(lab, pid)) == "AGENT_MANIFEST_MISMATCH"
 
 

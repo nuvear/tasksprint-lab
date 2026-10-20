@@ -57,6 +57,13 @@ PERMISSIONS: dict[tuple[str, str], frozenset[str]] = {
     ("POST", "/v1/approvals"): frozenset({"human_approver"}),
     ("POST", "/v1/release-executions"): frozenset({"operations"}),
     ("POST", "/v1/agent-evaluations"): frozenset({"evaluator"}),
+    # Phase 10 (A5, A8, A12): reports/manifests are readable by operations and humans, writable only by the
+    # evaluator; the evaluator's read-only observation route is not readable by any agent role. No MCP tools.
+    ("GET", "/v1/agent-evaluations/{report_id}"): frozenset({"evaluator", "operations", "human_approver", "instructor"}),
+    ("GET", "/v1/agent-system-manifests/qualified"): frozenset({"evaluator", "operations", "human_approver",
+                                                                "instructor"}),
+    ("POST", "/v1/agent-system-manifests/attestations"): frozenset({"evaluator"}),
+    ("GET", "/v1/evaluator/observations"): frozenset({"evaluator"}),
 }
 
 

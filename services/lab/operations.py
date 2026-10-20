@@ -16,16 +16,16 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
-from . import (a2a_exchanges, approvals, audit, baseline_smoke, candidates, executions, memory, release_plans,
-               releases, retrieval, runs, state, testing)
+from . import (a2a_exchanges, agent_evaluations, approvals, audit, baseline_smoke, candidates, executions,
+               instructor, memory, release_plans, releases, retrieval, runs, state, testing)
 from .auth import Identity
 from .clock import utc_now_iso
 from .config import Settings
 from .retrieval import KnowledgeBase
 from .runner_client import RunnerClient
 from .schemas import (A2AExchangeCreate, AgentEvaluationCreate, ApprovalCreate, CandidateSubmit,
-                      InstructorKnowledgeSearch, KnowledgeSearch, MemorySave, ReleaseExecutionCreate,
-                      ReleasePlanCreate, StoryCreate, TestRunCreate, TransitionRequest)
+                      InstructorKnowledgeSearch, KnowledgeSearch, ManifestAttestationCreate, MemorySave,
+                      ReleaseExecutionCreate, ReleasePlanCreate, StoryCreate, TestRunCreate, TransitionRequest)
 from .skills import NAME_RE, VERSION_RE, SkillCatalog
 from .store import LabError, Store, require_active_workspace
 
@@ -159,7 +159,19 @@ class LabOps:
             return {**view, "created": created}
         return self.write_op(c, "candidate.submit", op)
 
+    def _outage(self, c: Ctx, tool: str, action: str) -> None:
+        """Phase 10 (AE-05): a controlled unavailable result while an instructor outage drill is enabled."""
+        with self.store.read() as conn:
+            row = instructor.active_outage(conn, c.workspace_id, tool)
+        if row is not None:
+            err = LabError(503, "TOOL_UNAVAILABLE", f"{tool} is temporarily unavailable; nothing was run or changed. "
+                           "Report the outage and escalate; do not assume a result.",
+                           {"audit": {"tool": tool, "outage_id": row["outage_id"]}})
+            self.denial_event(c.request_id, c.identity, action, c.workspace_id, c.run_id, err)
+            raise err
+
     def create_test_run(self, c: Ctx, body: TestRunCreate) -> dict:
+        self._outage(c, "run_candidate_tests", "test_run.create")
         # The protected suite module is not edited (its own bytes are the suite hash); its single write
         # transaction is wrapped so the run is re-checked inside it, after the (long) runner evaluation.
         return self.audited(c, "test_run.create", lambda: testing.run_protected_suite(
@@ -178,6 +190,7 @@ class LabOps:
             return releases.release_status(conn, c.workspace_id)
 
     def app_health(self, c: Ctx) -> dict:
+        self._outage(c, "get_app_health", "app_health.read")
         with self.store.read() as conn:
             return releases.app_health(conn, c.workspace_id)
 
@@ -250,27 +263,30 @@ class LabOps:
                     actor_role=c.identity.role, run_id=c.run_id)
         return result
 
+    # ---------------------------------------------------------------- independent agent evaluations (Phase 10)
     def record_agent_evaluation(self, c: Ctx, body: AgentEvaluationCreate) -> dict:
-        """Phase 09 stub of the evaluator route: validated and stored; it never qualifies a manifest."""
-        def op(conn: sqlite3.Connection) -> dict:
-            report_id = "aer_" + secrets.token_hex(12)
-            conn.execute("INSERT INTO agent_eval_reports(report_id, manifest_json, cases_json, repetitions,"
-                         " outcomes_json, trajectories_json, created_by, created_at, workspace_id)"
-                         " VALUES (?,?,?,?,?,?,?,?,?)",
-                         (report_id, json.dumps({"harness_version": body.harness_version, **body.manifest},
-                                                sort_keys=True), json.dumps(body.cases, sort_keys=True),
-                          body.repetitions, json.dumps(body.outcomes, sort_keys=True),
-                          json.dumps(body.trajectories, sort_keys=True), c.identity.role, utc_now_iso(),
-                          c.workspace_id))
-            event_id = audit.record_event(conn, request_id=c.request_id, actor_role=c.identity.role,
-                                          action="evaluation.record", outcome="stored", workspace_id=c.workspace_id,
-                                          details={"report_id": report_id, "harness_version": body.harness_version,
-                                                   "cases": len(body.cases), "repetitions": body.repetitions})
-            return {"record_type": "agent_evaluation_report", "report_id": report_id, "stored": True,
-                    "qualifies_agent_manifest": False, "event_id": event_id,
-                    "note": "Phase 09 stub: the report is stored append-only. Qualification of an agent-system "
-                            "manifest is defined and verified in Phase 10; this record qualifies nothing."}
-        return self.write_op(c, "evaluation.record", op)
+        """Evaluator only: store an immutable report; the verdict and lab-side manifest are computed here."""
+        return self.write_op(c, "evaluation.record", lambda conn: agent_evaluations.record_report(
+            conn, workspace_id=c.workspace_id, body=body, request_id=c.request_id, actor_role=c.identity.role))
+
+    def read_agent_evaluation(self, c: Ctx, report_id: str) -> dict:
+        if not (report_id.startswith("aer_") and len(report_id) == 28):
+            raise LabError(404, "REPORT_NOT_FOUND", "agent-evaluation report does not exist in this workspace")
+        with self.store.read() as conn:
+            return agent_evaluations.report_view(conn, c.workspace_id, report_id)
+
+    def qualified_manifest(self, c: Ctx) -> dict:
+        with self.store.read() as conn:
+            return {"record_type": "agent_system_manifest_gate", **agent_evaluations.manifest_gate(conn, c.workspace_id)}
+
+    def attest_manifest(self, c: Ctx, body: ManifestAttestationCreate) -> dict:
+        return self.write_op(c, "evaluation.attest", lambda conn: agent_evaluations.record_attestation(
+            conn, workspace_id=c.workspace_id, system=body.system, request_id=c.request_id,
+            actor_role=c.identity.role))
+
+    def evaluator_observations(self, c: Ctx, since: str, limit: int) -> dict:
+        with self.store.read() as conn:
+            return agent_evaluations.observations(conn, c.workspace_id, since, limit)
 
     # ---------------------------------------------------------------- audited A2A exchanges (Phase 08)
     def record_a2a_exchange(self, c: Ctx, body: A2AExchangeCreate) -> dict:

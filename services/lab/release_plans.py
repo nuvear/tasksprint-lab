@@ -12,11 +12,12 @@
   returned instead of a second one (application-level deduplication, A10).
 * A plan is not an approval and nothing here changes the active artifact. Approval is
   ``approvals.py`` (human-only); execution is ``executions.py`` (A11).
-* Phase 09: a deploy plan may be created when the only unmet gate is the agent-system
-  manifest. It then binds ``agent_manifest_id: null`` and its execution is refused at A11
-  step 5 (AGENT_MANIFEST_NOT_QUALIFIED) until Phase 10 qualifies a manifest: a human can
-  review/approve/reject it, but the approval alone can never release it. Missing or failing
-  application tests, a bad candidate or an incident on the target still refuse the plan.
+* Phase 09 (plan schema 1.1) allowed a deploy plan bound to ``agent_manifest_id: null`` while no
+  manifest could exist. **Phase 10 (plan schema 1.2)** restores the requirement: a deploy plan is
+  created only when every gate passes, including the qualified agent-system manifest
+  (``agent_evaluations.manifest_gate``), and binds that manifest's id. Rollback plans bind
+  ``null`` (an agent baseline is not required to return to the recorded healthy v0). Old 1.1
+  plans bound to null stay reviewable and are still refused at A11 step 5.
 * ``review_snapshot`` is the exact immutable preview a human reviews; ``snapshot_sha256``
   (canonical JSON) is what an approval is bound to, together with ``plan_sha256``.
 """
@@ -36,8 +37,9 @@ from .releases import active_drill, app_health, resolve_active_candidate
 from .store import LabError, require_active_workspace
 from .testing import SUITE_SHA256, SUITE_VERSION
 
-PLAN_SCHEMA_VERSION = "1.1"  # 1.1: deploy may bind agent_manifest_id null (contracts/README.md)
-POLICY_VERSION = "tasksprint-release-policy/2 (Phase 09: human approval + transactional execution, A11)"
+PLAN_SCHEMA_VERSION = "1.2"  # 1.2 (Phase 10): deploy binds the qualified manifest id; rollback binds null
+POLICY_VERSION = ("tasksprint-release-policy/3 (Phase 10: qualified agent-system manifest gate; human approval + "
+                  "transactional execution, A11)")
 SNAPSHOT_SCHEMA = "tasksprint-review-snapshot/1"
 ENVIRONMENT = "demo-production"
 PLAN_TTL = timedelta(minutes=15)
@@ -56,13 +58,21 @@ def plan_hash(plan: dict[str, Any]) -> str:
 
 # ------------------------------------------------------------------ evidence lookups
 def qualified_agent_manifest(conn: sqlite3.Connection, workspace_id: str) -> dict[str, Any] | None:
-    """The approved agent-system manifest that qualifies a deployment.
+    """The approved agent-system manifest that qualifies a deployment, or None (fail closed).
 
-    Phase 08 has no agent-evaluation qualification (that is Phase 10), so no manifest
-    qualifies and every deploy is blocked at this gate. Fail closed: rows that may exist
-    in ``agent_eval_reports`` are not interpreted here.
+    Phase 10: the newest QUALIFIED independent evaluation report whose manifest still matches the
+    live system (``agent_evaluations.manifest_gate``: lab side recomputed now, latest attestation of
+    the Langflow/harness side, no later failing evaluation, verification age). Returns the gate
+    record (with ``manifest_id``) only when its status is PASS.
     """
-    return None
+    from .agent_evaluations import manifest_gate
+    gate = manifest_gate(conn, workspace_id)
+    return {**gate, "manifest_id": gate["agent_manifest_id"]} if gate["status"] == "PASS" else None
+
+
+def manifest_gate_detail(conn: sqlite3.Connection, workspace_id: str) -> dict[str, Any]:
+    from .agent_evaluations import manifest_gate
+    return manifest_gate(conn, workspace_id)
 
 
 def passing_report(conn: sqlite3.Connection, workspace_id: str, candidate_id: str, sha256: str,
@@ -137,10 +147,17 @@ def compute_readiness(conn: sqlite3.Connection, workspace_id: str, candidate_id:
                               "candidate_sha256": rep["candidate_sha256"], "suite_sha256": rep["suite_sha256"],
                               "suite_version": SUITE_VERSION})
     manifest = qualified_agent_manifest(conn, workspace_id)
-    gates.append({"gate": "agent_system_manifest", "status": "PASS" if manifest else "NOT_QUALIFIED",
-                  "agent_manifest_id": (manifest or {}).get("manifest_id"),
-                  **({} if manifest else {"reason": "no approved agent-system evaluation manifest is recorded "
-                                                    "(agent evaluations are Phase 10); deployment is blocked"})})
+    if manifest:
+        gates.append({"gate": "agent_system_manifest", "status": "PASS", "agent_manifest_id": manifest["manifest_id"],
+                      **{k: manifest[k] for k in ("manifest_sha256", "report_id", "qualified_at", "last_verified_at")
+                         if k in manifest}})
+    else:
+        detail = manifest_gate_detail(conn, workspace_id)
+        status = detail["status"] if detail["status"] != "PASS" else "NOT_QUALIFIED"
+        gates.append({"gate": "agent_system_manifest", "status": status,
+                      "agent_manifest_id": detail.get("agent_manifest_id"),
+                      "reason": detail.get("reason", "no qualified agent-system manifest"),
+                      **({"changed": detail["changed"]} if detail.get("changed") else {})})
     drill = active_drill(conn, workspace_id, cand_view["sha256"]) if cand_view else None
     gates.append({"gate": "no_incident_on_target", "status": "FAIL" if drill else "PASS"})
     blocking = [g["gate"] for g in gates if g["status"] != "PASS"]
@@ -204,13 +221,12 @@ def create_plan(conn: sqlite3.Connection, *, workspace_id: str, operation: str, 
             blocking.append("agent_system_manifest")
         if active_drill(conn, workspace_id, row["sha256"]) is not None:
             blocking.append("no_incident_on_target")
-        if [g for g in blocking if g != "agent_system_manifest"]:
+        if blocking:
             raise LabError(409, "RELEASE_NOT_READY", "deployment prerequisites are not met; no plan was created",
                            {"blocking_gates": blocking,
                             "audit": {"candidate_id": candidate_id, "blocking_gates": blocking}})
-        # Only the agent-system manifest is missing: the plan may exist for human review, bound to
-        # agent_manifest_id null; A11 step 5 refuses its execution until a manifest qualifies.
-        test_ref, manifest_ref = rep["test_run_id"], (manifest or {}).get("manifest_id")
+        # Plan schema 1.2: a deploy plan always binds the qualified agent-system manifest.
+        test_ref, manifest_ref = rep["test_run_id"], manifest["manifest_id"]
     else:
         if row["sha256"] != ws["baseline_sha256"]:
             raise LabError(409, "ROLLBACK_TARGET_NOT_BASELINE",
@@ -314,7 +330,8 @@ def review_snapshot(conn: sqlite3.Connection, plan: dict[str, Any]) -> tuple[dic
             "agent_manifest_id": plan["agent_manifest_id"],
             "status": "BOUND" if plan["agent_manifest_id"] else (
                 "NOT_REQUIRED_FOR_ROLLBACK" if plan["operation"] == "rollback" else
-                "NOT_QUALIFIED - execution will be refused (AGENT_MANIFEST_NOT_QUALIFIED) until Phase 10")},
+                "NOT_QUALIFIED - plan schema 1.1 bound no manifest; execution is always refused "
+                "(AGENT_MANIFEST_NOT_QUALIFIED)")},
         "rollback_target": {"sha256": ws["baseline_sha256"] if ws else None,
                             "baseline_evidence_id": plan["baseline_evidence_id"]},
         "plan_expires_at": plan["expires_at"],

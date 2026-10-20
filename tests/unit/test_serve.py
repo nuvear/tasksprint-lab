@@ -148,7 +148,7 @@ def test_startup_migrates_once_and_reports_non_secret_facts(tmp_path):
     db = tmp_path / "data" / "tasksprint.sqlite3"
     settings, host, port, facts = lab_serve.startup(_env(db))
     assert (host, port) == ("0.0.0.0", 8123)
-    assert facts["migrations_applied_now"] == [1, 2, 3, 4] and facts["schema_version"] == 4
+    assert facts["migrations_applied_now"] == [1, 2, 3, 4, 5] and facts["schema_version"] == 5
     assert facts["workers"] == 1 and facts["roles_configured"] == 1
     assert not any(v in str(facts) for v in FAKE_TOKENS.values())
     assert FAKE_TOKENS["coordinator"] not in str(facts)
@@ -214,9 +214,9 @@ def test_concurrent_starters_apply_migrations_exactly_once(tmp_path):
     for t in threads:
         t.join(30)
     assert not errors, errors
-    assert sorted(results, key=len) == [[]] * 5 + [[1, 2, 3, 4]]
+    assert sorted(results, key=len) == [[]] * 5 + [[1, 2, 3, 4, 5]]
     conn = sqlite3.connect(db)
-    assert [r[0] for r in conn.execute("SELECT version FROM schema_migrations ORDER BY version")] == [1, 2, 3, 4]
+    assert [r[0] for r in conn.execute("SELECT version FROM schema_migrations ORDER BY version")] == [1, 2, 3, 4, 5]
 
 
 def test_failed_migration_applies_nothing(tmp_path, monkeypatch):

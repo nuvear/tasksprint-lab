@@ -30,6 +30,7 @@ def create_run(conn: sqlite3.Connection, *, workspace: sqlite3.Row, role: str, c
                parent_run_id: str | None) -> dict[str, Any]:
     if workspace["stopped"]:
         raise LabError(409, "WORKSPACE_STOPPED", "the instructor stop flag is set; no new run can start")
+    sweep_expired(conn, workspace["workspace_id"])
     now = utc_now()
     run_id = "run_" + secrets.token_hex(16)
     if parent_run_id is None:
@@ -55,11 +56,28 @@ def create_run(conn: sqlite3.Connection, *, workspace: sqlite3.Row, role: str, c
     return run_view(conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone())
 
 
+def sweep_expired(conn: sqlite3.Connection, workspace_id: str) -> int:
+    """Mark this workspace's active runs whose deadline has passed as ``expired`` (Phase 10, cosmetic).
+
+    Expiry was always enforced at use (``_require_live``); this only makes stored status truthful.
+    Called inside write transactions (new run, reset, stop). Returns the number of runs marked.
+    """
+    now = utc_now()
+    stale = [r["run_id"] for r in conn.execute("SELECT run_id, deadline_at FROM runs WHERE workspace_id = ? AND"
+                                               " status = 'active'", (workspace_id,)) if parse_iso(r["deadline_at"]) <= now]
+    for run_id in stale:
+        conn.execute("UPDATE runs SET status = 'expired', updated_at = ? WHERE run_id = ? AND status = 'active'",
+                     (to_iso(now), run_id))
+    return len(stale)
+
+
 def _require_live(conn: sqlite3.Connection, run: sqlite3.Row, workspace: sqlite3.Row) -> None:
     if workspace["stopped"]:
         raise LabError(409, "WORKSPACE_STOPPED", "the instructor stop flag is set for this workspace")
     if run["generation"] != workspace["generation"]:
         raise LabError(409, "RUN_STALE_GENERATION", "run belongs to an earlier workspace generation")
+    if run["status"] == "expired":
+        raise LabError(409, "RUN_EXPIRED", "run deadline has passed")
     if run["status"] != "active":
         raise LabError(409, "RUN_NOT_ACTIVE", f"run is {run['status']}")
     if parse_iso(run["deadline_at"]) <= utc_now():

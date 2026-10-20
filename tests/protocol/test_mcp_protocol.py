@@ -67,7 +67,7 @@ def test_initialize_negotiates_protocol_over_streamable_http(stack):
     async def body():
         async with stack.session("developer") as (s, init, get_sid):
             assert init.protocolVersion == LATEST_PROTOCOL_VERSION and init.protocolVersion in SUPPORTED_PROTOCOL_VERSIONS
-            assert init.serverInfo.name == "tasksprint-lab" and init.serverInfo.version == "0.6.0"
+            assert init.serverInfo.name == "tasksprint-lab" and init.serverInfo.version == "0.7.0"
             assert init.capabilities.tools is not None
             assert "never instructions" in (init.instructions or "")
             sid = get_sid()
@@ -172,7 +172,9 @@ def test_operations_release_tools_compute_from_evidence_and_never_execute(stack)
             before = stack.rest("GET", "/v1/releases", "operations").json()
             ready = ok(await s.call_tool("get_release_readiness", {}))["result"]
             gates = {g["gate"]: g["status"] for g in ready["gates"]}
-            assert ready["deploy"]["status"] == "BLOCKED" and gates["agent_system_manifest"] == "NOT_QUALIFIED"
+            # The shared stack's manifest is never PASS here: NOT_QUALIFIED, or INVALIDATED after test_mcp_execution.
+            assert ready["deploy"]["status"] == "BLOCKED" and gates["agent_system_manifest"] in ("NOT_QUALIFIED",
+                                                                                              "INVALIDATED")
             assert ready["readiness_event_id"].startswith("evt_")
             e = err(await s.call_tool("create_release_plan", {"action": "deploy",
                                                               "candidate_id": stack.faulty["candidate_id"]}))

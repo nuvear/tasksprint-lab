@@ -29,3 +29,13 @@ the installed implementation supports text artifacts; validate the parsed result
   A11 step 5 (`AGENT_MANIFEST_NOT_QUALIFIED`); a later manifest never satisfies a plan bound to
   `null` (the bound id must equal the qualified manifest). Missing/failing application tests still
   refuse the plan itself. Owner decision pending: keep 1.1, or restore a required string in Phase 10.
+* `release-plan.schema.json` **1.1 → 1.2** (Phase 10, 20 Oct 2026, decided by the builder under the
+  orchestrator's delegation): a **deploy** plan again requires a string `agent_manifest_id` (as in
+  1.0) — the server creates a deploy plan only when the agent-system manifest gate passes and binds
+  the qualified `asm_…` id; a rollback plan binds `null`. Reason: manifests now exist, so a null
+  deploy plan would only be an unexecutable review object. 1.1 plans already stored stay readable and
+  are refused at A11 step 5 as before.
+* `handoff-task.schema.json` **stays 1.1** (Phase 10 decision): `agent_manifest_id` in the A2A
+  assessment request remains nullable. The requester (Sprint Room) is not an authority for the
+  manifest; Operations resolves it itself from readiness, and only the server-bound plan field is
+  authoritative. Changing it would also change the TS-10 Bounded Toolset (a Langflow flow change).

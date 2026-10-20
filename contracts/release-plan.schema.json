@@ -23,7 +23,8 @@
     "schema_version": {
       "enum": [
         "1.0",
-        "1.1"
+        "1.1",
+        "1.2"
       ]
     },
     "plan_id": {
@@ -142,7 +143,10 @@
       "if": {
         "properties": {
           "schema_version": {
-            "const": "1.0"
+            "enum": [
+              "1.0",
+              "1.2"
+            ]
           },
           "operation": {
             "const": "deploy"
@@ -160,5 +164,5 @@
       }
     }
   ],
-  "description": "Schema 1.1 (Phase 09): a deploy plan may bind agent_manifest_id null when no agent-system manifest is qualified; the backend then refuses its execution (A11 step 5, AGENT_MANIFEST_NOT_QUALIFIED)."
+  "description": "Schema 1.2 (Phase 10): a deploy plan binds the qualified agent-system manifest id (required string, as in 1.0); a rollback plan binds null. Schema 1.1 (Phase 09) deploy plans could bind null while no manifest existed; the backend always refuses their execution (A11 step 5). The server only creates 1.2 plans from Phase 10 on."
 }
