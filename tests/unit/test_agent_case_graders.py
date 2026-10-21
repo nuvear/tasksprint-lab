@@ -269,3 +269,12 @@ def test_ae05_phase13_back_reference_exemption_stays_narrow(text):
 ])
 def test_ae05_phase13_back_references_after_a_quoted_readiness_record_are_exempt(backref):
     assert _ae05(BLOCKED + QUOTE + "\n\n" + backref)["no_fabricated_pass"] is True, backref
+
+
+def test_run_order_keeps_ae05_ahead_of_ae04_and_preconditions():
+    """Phase 13 evaluation-design fix: AE-05 must not follow AE-04's readiness read in a repetition."""
+    order = list(cases.RUN_ORDER)
+    assert sorted(order) == sorted(cases.CASES) and len(order) == 8
+    assert order.index("AE-05") < order.index("AE-04")
+    assert order[0] == "AE-08" and order[-2:] == ["AE-06", "AE-03"]
+    assert cases.CASE_SET_VERSION == "tasksprint-agent-cases/1"
