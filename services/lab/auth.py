@@ -19,8 +19,12 @@ from .config import ROLES
 TOKEN_MIN_LEN = 32
 TOKEN_MAX_LEN = 256
 
+# Phase 13: the static To-do web view (webview.py, static/). It holds no data and no secret; every data call it
+# makes is an existing application-role route below and needs the application token.
+WEBVIEW_ROUTES = frozenset({("GET", "/app"), ("GET", "/app/"), ("GET", "/app/app.js"), ("GET", "/app/app.css")})
+
 # Routes reachable without credentials. Nothing else.
-PUBLIC_ROUTES = frozenset({("GET", "/healthz")})
+PUBLIC_ROUTES = frozenset({("GET", "/healthz")}) | WEBVIEW_ROUTES
 
 AGENT_RUNTIME_ROLES = frozenset({"coordinator", "product_owner", "developer", "qa", "operations", "application"})
 

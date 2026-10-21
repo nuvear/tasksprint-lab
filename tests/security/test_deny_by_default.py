@@ -56,7 +56,9 @@ def test_every_route_has_an_explicit_policy(seeded):
     assert routes, "no business routes discovered"
     missing = [r for r in routes if r not in PERMISSIONS]
     assert missing == [], f"routes without a policy: {missing}"
-    assert set(PUBLIC_ROUTES) == {("GET", "/healthz")}
+    # Phase 13: plus exactly the four static web-view routes (no data; tests/security/test_webview.py).
+    assert set(PUBLIC_ROUTES) == {("GET", "/healthz"), ("GET", "/app"), ("GET", "/app/"), ("GET", "/app/app.js"),
+                                  ("GET", "/app/app.css")}
 
 
 def test_missing_and_invalid_tokens_are_denied_without_state_change(seeded):

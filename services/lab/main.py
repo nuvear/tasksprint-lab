@@ -3,7 +3,7 @@
 Run locally (one worker, as required by A5):
     TASKSPRINT_ENV_FILE=.local/lab.env uv run uvicorn --factory services.lab.main:create_app --workers 1
 
-Only ``GET /healthz`` is public. Every other route passes the global
+Only ``GET /healthz`` and the static web view ``GET /app`` (Phase 13, ``webview.py``; no data) are public. Every other route passes the global
 ``authorize`` dependency: token -> identity, then the route's entry in
 ``auth.PERMISSIONS``; a route without an entry is denied (deny by default).
 ``/mcp`` is the MCP Streamable HTTP endpoint (``mcp.py``); it authenticates
@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.routing import Route
 
-from . import SERVICE_VERSION, app_commands, audit, instructor, runs
+from . import SERVICE_VERSION, app_commands, audit, instructor, runs, webview
 from .auth import PUBLIC_ROUTES, Authenticator, Identity, allowed_roles
 from .config import Settings, load_settings, valid_workspace_id
 from .mcp import MCP_PATH, McpEndpoint
@@ -205,6 +205,9 @@ def create_app(settings: Settings | None = None, runner: RunnerClient | None = N
     @app.get("/healthz")
     def healthz() -> dict:
         return {"status": "ok", "service": "tasksprint-lab"}
+
+    # Phase 13: the static To-do web view; its data calls use the application role's existing routes.
+    webview.register(app)
 
     @app.post("/v1/runs", status_code=201)
     def create_run(body: RunCreate, request: Request) -> dict:

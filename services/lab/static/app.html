@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<title>TaskSprint To-do</title>
+<link rel="stylesheet" href="/app/app.css">
+<script src="/app/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <h1>TaskSprint To-do <span class="sep">&middot;</span> demo-production</h1>
+  <a href="#" id="disconnect" class="link" hidden>Disconnect</a>
+</header>
+
+<main>
+  <section id="gate" class="gate" hidden>
+    <form id="gate-form" autocomplete="off">
+      <label for="token">Application token</label>
+      <div class="row">
+        <input id="token" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" required>
+        <button type="submit">Connect</button>
+      </div>
+      <p class="note">Kept only in this browser tab (session storage). Never in the address, a cookie or the page.</p>
+      <p id="gate-msg" class="msg"></p>
+    </form>
+  </section>
+
+  <section id="view" hidden>
+    <dl class="strip" aria-label="Release status">
+      <div><dt>Active candidate</dt><dd><span id="s-cand" class="id data">&ndash;</span> <span id="s-hash" class="mono muted">&ndash;</span></dd></div>
+      <div><dt>Origin</dt><dd id="s-origin">&ndash;</dd></div>
+      <div><dt>Release revision</dt><dd id="s-rev" class="mono data">&ndash;</dd></div>
+      <div><dt>Business health</dt><dd id="s-health">&ndash;</dd></div>
+    </dl>
+
+    <table class="tasks" aria-label="Tasks">
+      <thead><tr><th>ID</th><th>Title</th><th>Completed</th><th>Row revision</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p id="empty" class="muted" hidden>No tasks.</p>
+
+    <form id="add-form" class="add" autocomplete="off">
+      <input id="add-title" type="text" maxlength="120" placeholder="New task title" aria-label="New task title">
+      <button type="submit">Add task</button>
+    </form>
+
+    <p class="last">Last response: <span id="last-code" class="mono">&ndash;</span> <span id="last-msg"></span></p>
+    <h2>Last 5 responses</h2>
+    <ol id="log" class="log"></ol>
+    <p id="poll" class="muted small">Not connected.</p>
+  </section>
+</main>
+
+<footer>Rajkumar Rajagobalan &middot; workshop-v1.1</footer>
+</body>
+</html>
