@@ -96,10 +96,43 @@ approval, stop control or test.
 * **Skill load.** Once, Operations asked for `release-and-recover` with version "1" (SKILL_NOT_FOUND) and still
   planned correctly from readiness. If it is asked about this, the skill's version is 1.0.0.
 
+## Production web view `/app` (Phase 13, workshop-v1.1)
+
+**The tab.** `https://tasksprint-lab-production.up.railway.app/app` is the To-do app as an end user would see it.
+* Open it in a new tab on the projector before minute 0 and paste the application token once (README "Class day"
+  step 4). Then switch to it whenever production matters.
+* It reads the same records as TS-30 and refreshes every 3 s.
+* **Complete** and **Add task** send the same `complete <ID>` / `add <title>` commands as TS-30, with the same
+  application role. The response code appears inline and in "Last 5 responses".
+* It shows only production. Stories, candidates, test runs, plans and approvals do not appear on it until a release
+  changes the active version. That is the teaching point.
+
+**Live status.** Only the v0 state was verified live in Phase 13 (`13-01`, `13-02`). The release, drill and rollback
+states below are **expected** from the same `status`/`list` data that TS-30 shows. They have not been rehearsed in the
+web view.
+
+| Slot / scene | What the `/app` tab shows | What to do there |
+|---|---|---|
+| 00–08 Goal (`status`, `list`) | Active candidate `cand_561149e5…`, starter-v0 (fixture), release revision 2, **healthy**; T001 and T002 "–", row revision 1; Complete buttons muted | Open the tab and click **Complete** on T001: **FEATURE_UNAVAILABLE** "Task completion is not available in the active version." (`13-02`). This is the goal: make that button work without losing tasks |
+| 08–78 Story, inspect, memory, implement, faulty fixture and repair, live cases | **No change.** Still v0, revision 2, Complete muted | Switch to it once after the Developer submits a candidate and QA passes it. Production is unchanged: a candidate is not a release |
+| 78–90 A2A assessment and deploy plan | No change (a plan is not a release) | Optional: show it is still v0 while the plan waits for approval |
+| 90–101 Bypass refused; approve; execute; complete | **Bypass refused:** no change. **Within 3 s of execution (expected):** active candidate and hash change to the released agent candidate, origin agent-generated, release revision 3 (+1), still healthy; **Complete turns active** (ink, not muted) | Click **Complete** on T001: **COMPLETED**, T001 shows ✓ and row revision 2, T002 unchanged. This can replace or follow TS-30 `complete T001`. The same rule applies: one Complete click, then read `list` |
+| 101–113 Drill; investigation; rollback | **Drill on:** business health **degraded** (red), Complete muted; clicking Complete gives **COMPLETION_UNAVAILABLE_DRILL**, nothing changed. **After the approved rollback:** v0 `cand_561149e5…` again, release revision 4 (+1), healthy, Complete muted again (**FEATURE_UNAVAILABLE**), **T001 still ✓** | Click Complete once during the drill (the incident as a user sees it). After the rollback, click once more: the feature is withdrawn, but the records survived |
+| 113–120 Retrospective | The final state: v0, T001 ✓, T002 – | Point at it while stating truthfully that rollback withdrew the feature |
+
+**Cautions:**
+* The page shows candidate IDs and hashes, never a token. Keep TS-90 off the projector as before.
+* If the page shows "Token refused (UNAUTHENTICATED)", paste the token again off-screen.
+* A "Refresh … incomplete" line names the lab code (for example `LAB_UNREACHABLE`); TS-30 remains the fallback.
+* Extra Complete clicks are harmless: each one is a real command the lab answers, recorded like a TS-30 command.
+* Do not click **Add task** during the live class cases. A third task changes the "two tasks" narrative, and reset
+  removes it anyway.
+* After class: **Disconnect**, then reset.
+
 ## Pre-class check
 
 Run `scripts/doctor.py`, then reset demo-001 (`scripts/reset_demo.py … --dry-run`, then `--confirm demo-001`,
-or TS-90), then `scripts/doctor.py --no-model-probe` (must be PASS). Verify v0 and two synthetic task IDs, model connectivity, MCP calls,
+or TS-90), then `scripts/doctor.py --no-model-probe` (must be PASS). Then open `/app` and connect it (above). Verify v0 and two synthetic task IDs, model connectivity, MCP calls,
 Operations A2A availability, approval UI, clean drill state, no reusable leftover
 approval, the frozen manifest and the emergency stop. Keep secrets off the projection.
 

@@ -1,20 +1,39 @@
-# Frozen workshop version — `workshop-v1` (proposed git tag; not created)
+# Frozen workshop version — `workshop-v1.1` (proposed git tag; not created)
 
-**Frozen:** 20 October 2026, 23:50 UTC (Phase 12). Branch `feature/phase-12-freeze` (not pushed). The deployed lab
-code is commit `b5d5100` on `origin/main` (+ empty retrigger `17e0560`). The grader fix is commit `5b0b88a`.
-Create the tag on the commit that adds this file, once the orchestrator has merged the branch.
+**Frozen:** 21 October 2026, 04:01 UTC (Phase 13). Branch `feature/phase-13-webview`, merged into local `main`, **not
+pushed**. Create the tag `workshop-v1.1` on `main` after Raj pushes it.
+
+**What changed from `workshop-v1` (tag on `f0f175a`):**
+* **Lab 0.9.0** (`60b2b63`) adds the production web view `GET /app` (static page; the application role's existing
+  routes only; no permission or MCP catalog change).
+* Two protected evaluation-file edits:
+  * AE-05 grader fix 2 (`190f91e`);
+  * AE-05 runs before AE-04 (`6c211dc`).
+* Flows, prompts, skills, corpus, components, model and budgets are **unchanged**.
+
+The `workshop-v1` manifest `asm_7ec31ba7…` no longer applies: the lab side changed.
 
 ## Qualified agent-system manifest (the class runs only on this)
 
 | Item | Value |
 |---|---|
-| Manifest | `asm_7ec31ba78e6d8f6d26f4bfb4`, sha256 `7ec31ba78e6d8f6d26f4bfb41ff49697a5bc5ac7fae5e10c7ef919914d927485` |
-| Report | `aer_8ce88b1bcc26993f5533d584` (QUALIFIED, 24/24, 0 critical), sha256 `1c2c6b74…f9242`, run `77b8ed` (23:26:10–23:39:28Z) |
-| Qualified at | 2026-10-20T23:39:27Z. Last attestation `att_b4c0891477f61ba9563bfb10` (23:50Z, matches). 24 h verification window; `doctor.py` re-attests |
-| Lab side | `891e75f30db995f9f8b93970fd6b1a4862163e80ba6b6f0c59e303311aec6031` |
-| Langflow / harness side | `d666e4744381b5c00c8a2e8d7cfe8e26f9c2d85e4025d924c6f56bb067badd6e` |
-| Harness / case set / grader | `tasksprint-agent-eval-harness/1.0.0` / `tasksprint-agent-cases/1` / grader sha256 `d280d91b34be9f92bf56663af665bfc83adaae39148fb84f87bb166378fe8cf3` |
-| Summary | `reports/redacted/agent_eval_20261020_2339_77b8ed.md` |
+| Manifest | **`asm_c8f4f59d8778fb215c72817b`**, sha256 `c8f4f59d8778fb215c72817bddf37292af2ccc49102008259fb82abc9e35eaa5` |
+| Report | `aer_d181ee99b7275877a8a9bf5e` (QUALIFIED, 24/24, 0 critical), sha256 `10a896e130e9b833daae8529c341de42e7026132b91b079d939d4d238c720a08`, run `b5e0c2` (03:47:45–03:59:38Z) |
+| Qualified at | 2026-10-21T03:59:37Z. Attestations: `att_6525ff20a1b1fa9efaaa49f3` (`--attest`, 04:00Z) and `att_76d909afa76733c59fd662e0` (doctor, runtime key, after reset); both match. 24 h verification window; `doctor.py` re-attests |
+| Lab side | `94a92143717e2f40016bfe71ef48dce84f614dadd1016c574f586c4f4af92cd2` (lab 0.9.0) |
+| Langflow / harness side | `5d5a633df57a41e30cba11283c33bf5fb22fbb9ca9503e5d893e47cf48afb96b` |
+| Harness / case set | `tasksprint-agent-eval-harness/1.0.0` (`scripts/run_agent_evals.py` `27d121d8…`, unchanged) / `tasksprint-agent-cases/1` (`cases.py` `26edf3da3bf7e08b00bf2f5e99ef647eacba9315d057cedffab614153a6f8737`; order AE-08, AE-01, AE-02, **AE-05, AE-04**, AE-07, AE-06, AE-03) |
+| Grader | `graders.py` `57e1224304d6b901d5338a308674981b60e3d6bb9c4e8b8e722380dbe2d48b69` (grader fix 2). Combined grader sha256 (cases + graders + harness, as in the manifest) **`371a72476a4da2e3703717ee9ef97b4c189c11d0a127e51c9b8d575bc4467559`**. History: `d1761cf0…` (Phase 10) → `d280d91b…` (Phase 12) → `03d413d2…` (grader fix 2) → `371a7247…` (run order) |
+| Summary | `reports/redacted/agent_eval_20261021_0359_b5e0c2.md` |
+
+**Disclosed non-qualifying runs (Phase 13).** Both were stopped at AE-05 r1 by instruction, and no lab report was
+submitted for either:
+* `8a5fed` (grader `d280d91b…`);
+* `d13034` (grader `03d413d2…`).
+
+The cause was the same in both. AE-05 ran right after AE-04's readiness read, QA quoted that readiness event, and the
+lexical `no_fabricated_pass` check counted it. QA's behaviour was correct. See `docs/PHASE13_REPORT.md` §3–5. The
+Phase 12 runs (`a01c0e` NOT_QUALIFIED, `77b8ed` QUALIFIED) belong to `workshop-v1`.
 
 ## Platform, model and limits
 
@@ -22,7 +41,9 @@ Create the tag on the commit that adds this file, once the orchestrator has merg
 * **A2A:** TS-20 card protocolVersion 0.3.0.
 * **Model:** `claude-sonnet-5-5` (Anthropic, Langflow Agent component) in all five agent flows. Max Iterations 8
   (TS-01, TS-02, TS-03, TS-10) and **12 (TS-20)**. Calculator and Current Date are off.
-* **Lab:** `tasksprint-lab` 0.8.0 (`https://tasksprint-lab-production.up.railway.app`).
+* **Lab:** `tasksprint-lab` 0.9.0 (`https://tasksprint-lab-production.up.railway.app`). The web view is at `/app`; its
+  static files (`services/lab/static/`) are not part of the lab-side hash, but the routes that serve them are
+  (`main.py`, `auth.py`, `webview.py`).
 * **Runner:** `tasksprint-runner/0.3.0`; candidate grammar `ts-python-subset/1`.
 * **Migrations:** 1–5 (Phase 02, 04, 08, 09, 10). The migration SQL hashes are in the bundle's `versions.json`.
 * **Policy:** `tasksprint-release-policy/3`, plan schema 1.2.
@@ -31,7 +52,7 @@ Create the tag on the commit that adds this file, once the orchestrator has merg
 * **Harness budgets:** 8 actions per invocation (**operations 12**); 24 per parent tree; depth 2; deadlines 90 s
   (specialist) and 180 s (parent); one repair; one transient-read retry.
 
-## Flows (live IDs = committed exports; `scripts/verify_flows.py` PASS at 23:50Z)
+## Flows (live IDs = committed exports; `scripts/verify_flows.py` PASS at 04:01Z, 21 Oct; unchanged since Phase 12)
 
 | Flow | Live ID | Content digest | `flows/` file sha256 | Notes |
 |---|---|---|---|---|
@@ -58,22 +79,24 @@ Create the tag on the commit that adds this file, once the orchestrator has merg
 | Skill `release-and-recover` | 1.0.0, body `92d996e2…0c2f`, package `ddf70afa…20fa6` |
 | Corpus manifest | `01058009bba9c688…18e1`: product brief 1.1, definition of done 1.0 and release policy 1.0 (approved); early design note 0.1 (archived, for AE-02) |
 
-## Class start state (pre-class check, 23:48–23:50Z)
+## Class start state (pre-class check, 04:00Z, 21 Oct)
 
-* demo-001 at **generation 20** (reset `evt_e2a1074f…`, export `exp_35eae8f799ba4ca0d2f0750a`).
+* demo-001 at **generation 26** (reset `evt_1084656d3857cbb79d40f6f2`, export `exp_a5795a21776c3513abbc7cf1`).
 * v0 `cand_561149e5c98bb5b7e8ab7357` active at release revision 2 (a monotonic counter); business health healthy.
 * T001 and T002 incomplete.
 * No story, memory, drill, outage, stop flag, live run, open plan or unused approval.
-* The model was reachable (live turn 1.9 s at 23:47Z) and so was the A2A peer card.
+* The model was reachable (live turn 1.8 s at 04:00Z, runtime key) and so was the A2A peer card.
+* The web view `/app` served 200 with its CSP; data calls without a token: 401.
 
 ## What invalidates this freeze
 
 Any change to the model or its parameters, a prompt, a skill, the corpus, the MCP tool catalog or permissions, a
 custom component, a flow (wiring, settings, Max Iterations, bindings), the lab code (lab side), the release policy,
-or the harness or grader. Any of these changes the attested system, and the lab's manifest gate then blocks
+the harness, the case set (including its run order) or the grader. Any of these changes the attested system, and the lab's manifest gate then blocks
 deploy plans until `run_agent_evals.py --repeats 3` qualifies again.
 
-These do **not** invalidate it: a reset, class Playground sessions, revoking the setup-only bootstrap key, or an
+These do **not** invalidate it: a change to the web view's static files only (`services/lab/static/`; not in the lab
+side, but rerun `tests/security/test_webview.py`), a reset, class Playground sessions, revoking the setup-only Langflow keys, or an
 attestation that matches. A Langflow canvas **save** may change a flow; if a save happens, run `verify_flows.py` and
 `doctor.py`.
 

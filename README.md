@@ -1,7 +1,8 @@
 # TaskSprint — build handoff kit
 
 **Target:** existing Langflow 1.12.5 on Railway. **Edition:** 20 October 2026.
-**Status (Phase 12):** built and frozen as `workshop-v1` (see `docs/FROZEN_VERSION.md`, `docs/BUILD_STATUS.md`).
+**Status (Phase 13):** built and frozen as `workshop-v1.1`: `workshop-v1` plus the production web view `/app`, with
+the agent system requalified (see `docs/FROZEN_VERSION.md`, `docs/BUILD_STATUS.md`).
 The original kit text below describes how it was built; the section "Class day" is how to run it.
 
 ## Class day (built workshop)
@@ -18,13 +19,26 @@ the names). Always use the locked environment: `uv run --frozen --no-dev python 
    `reset confirm demo-001`.
 3. **Doctor again** — `scripts/doctor.py --no-model-probe`. It must be PASS: v0, two tasks, no pending plan,
    approval, drill or stop.
-4. **Three screens** (Langflow, project TaskSprint, each in its Playground):
+4. **Production web view** (Phase 13): in a new browser tab on the projector, open
+   `https://tasksprint-lab-production.up.railway.app/app`.
+   * Paste the application token once (`TS_APP_TOKEN` from `.local/railway/role_tokens.env`, from your password
+     manager) into the masked **Application token** field, then click **Connect**.
+     * Paste it off-screen, or with the projector frozen.
+     * Do not let the browser save it.
+     * The page keeps it only in that tab.
+   * Check the page shows:
+     * active candidate `cand_561149e5…`, starter-v0 (fixture), release revision 2, **healthy**;
+     * T001 and T002 with "–" (not completed).
+   * Leave the tab open; it refreshes every 3 s.
+   * After class, click **Disconnect** (it removes the token) and close the tab.
+5. **Three screens** (Langflow, project TaskSprint, each in its Playground):
    * **TS-30 To-do App** — `status`, `list`;
    * **TS-10 Sprint Room** — the class prompts;
    * **TS-20 Production Manager** — release, incident and recovery.
-5. **Instructor console** — **TS-90 Instructor Console**, human-only: scope confirmation, fixtures, drills, `review
+6. **Instructor console** — **TS-90 Instructor Console**, human-only: scope confirmation, fixtures, drills, `review
    <plan>` with **Approve** / **Reject**, `stop`/`resume`, reset. Keep it off the projector when it shows IDs.
-6. Follow `docs/SESSION_RUNBOOK.md` (timed 120-minute table and observed prompt wording).
+7. Follow `docs/SESSION_RUNBOOK.md`: the timed 120-minute table, the observed prompt wording, and what the `/app` tab
+   shows in each scene.
 
 After class: reset again. Do not change models, prompts, skills, tools, flows or policy without rerunning
 `scripts/run_agent_evals.py --repeats 3` (the frozen manifest no longer applies otherwise). Other checks:

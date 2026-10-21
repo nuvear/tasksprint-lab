@@ -1,7 +1,34 @@
 # Build status
 
-**Last updated:** 20 October 2026, about 23:55 UTC (Phase 12 executed; **FINAL**).
-**Current gate:** **GATE 12 PASS, with the NOT RUN / NOT DONE items stated** (`docs/PHASE12_REPORT.md`,
+**Last updated:** 21 October 2026, about 04:05 UTC (Phase 13 executed; **FINAL**).
+**Current gate:** **GATE 13 PASS** (`docs/PHASE13_REPORT.md`, `docs/ACCEPTANCE_SIGNOFF.md`). Frozen as
+**`workshop-v1.1`** (`docs/FROZEN_VERSION.md`; proposed tag, not created). Branch `feature/phase-13-webview`, merged
+into local `main`, **not pushed**.
+* **Lab:** 0.9.0, the production web view `GET /app` (static page, application-role routes only, strict CSP, token in
+  sessionStorage). Lab side `94a92143…`. Raj verified it live (`13-01`, `13-02`).
+* **Evaluation fixes (protected, approved):**
+  * AE-05 grader fix 2 (`190f91e`);
+  * AE-05 runs before AE-04 (`6c211dc`).
+
+  Combined grader hash `371a7247…`.
+* **Qualified manifest `asm_c8f4f59d8778fb215c72817b`** (report `aer_d181ee99…`, run `b5e0c2`, 24/24, 0 critical).
+  * Disclosed non-qualifying runs, both stopped at AE-05 r1 and not submitted: `8a5fed` and `d13034`.
+  * `--attest` matches (`att_6525ff20…`).
+* **Class start state:** generation 26, v0 at revision 2, T001/T002, nothing pending.
+  * `doctor.py` (runtime key) PASS, 0 failed (04:00Z); live model turn 1.8 s.
+  * `verify_flows.py` PASS (04:01Z).
+* **Tests:** 663 passed.
+* **Spend:** ≈ USD 1.41 for `b5e0c2` and ≈ USD 0.34 for the two stopped runs (estimate, unverified Phase 10 price
+  table).
+* **Remaining human actions:**
+  * push `main` and tag `workshop-v1.1`;
+  * revoke the temporary key `tasksprint-setup-tmp` and delete `.local/railway/langflow_bootstrap.env`.
+* **Not run:**
+  * the web view's release, drill and rollback states live;
+  * a bundle regeneration;
+  * the Phase 12 "not run" items.
+
+**Previous gate (workshop-v1):** **GATE 12 PASS, with the NOT RUN / NOT DONE items stated** (`docs/PHASE12_REPORT.md`,
 `docs/ACCEPTANCE_SIGNOFF.md`). Frozen as **`workshop-v1`** (`docs/FROZEN_VERSION.md`). Branch
 `feature/phase-12-freeze` (on top of origin/main `17e0560`, not pushed).
 * **Lab:** 0.8.0 (per-role action cap: operations 12, others 8; readiness returns the baseline candidate ID), lab side
